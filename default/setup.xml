@@ -1,0 +1,9 @@
+<setup>
+  <block title="API Connect — Configurazione iniziale" endpoint="apps/local/api_connect" entity="setup">
+    <text>
+      Benvenuto in API Connect. L'app è pronta all'uso.
+      Prima di creare i primi input, aggiungi le credenziali nella sezione
+      "Credential Manager" del menu principale.
+    </text>
+  </block>
+</setup>

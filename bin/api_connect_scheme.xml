@@ -1,0 +1,28 @@
+<!-- 
+  api_connect_scheme.xml
+  Dichiarazione dello schema per il modular input "api_connect".
+  Splunk legge questo file per registrare il tipo di input
+  e mostrarlo nell'interfaccia Data Inputs.
+-->
+<scheme>
+  <title>API Connect</title>
+  <description>Input API REST generato da API Connect Wizard. Interroga endpoint HTTP/HTTPS con autenticazione, parsing e mapping al tracciato standard.</description>
+  <use_external_validation>false</use_external_validation>
+  <streaming_mode>xml</streaming_mode>
+  <use_single_instance>false</use_single_instance>
+
+  <endpoint>
+    <args>
+      <arg name="name">
+        <title>Nome input</title>
+        <description>Identificatore univoco dell'input (generato dal wizard).</description>
+      </arg>
+      <arg name="config_key">
+        <title>KV Store key</title>
+        <description>Chiave nel KV Store api_connect_inputs che contiene la configurazione completa.</description>
+        <required_on_create>true</required_on_create>
+        <required_on_edit>false</required_on_edit>
+      </arg>
+    </args>
+  </endpoint>
+</scheme>

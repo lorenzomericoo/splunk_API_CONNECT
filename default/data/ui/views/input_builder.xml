@@ -1,0 +1,384 @@
+<dashboard version="1.1" theme="light" script="api_connect_builder.js" stylesheet="api_connect.css">
+  <label>API Connect — Input Builder</label>
+  <description>Wizard guidato per la creazione di un nuovo Modular Input API</description>
+
+  <row>
+    <panel>
+      <html>
+        <div id="ac-builder-root">
+
+          <!-- Step progress bar -->
+          <div class="ac-wizard-progress">
+            <div class="ac-wizard-step active" data-step="1">
+              <div class="ac-step-circle">1</div>
+              <div class="ac-step-label">Autenticazione</div>
+            </div>
+            <div class="ac-wizard-connector"></div>
+            <div class="ac-wizard-step" data-step="2">
+              <div class="ac-step-circle">2</div>
+              <div class="ac-step-label">Endpoint</div>
+            </div>
+            <div class="ac-wizard-connector"></div>
+            <div class="ac-wizard-step" data-step="3">
+              <div class="ac-step-circle">3</div>
+              <div class="ac-step-label">Test chiamata</div>
+            </div>
+            <div class="ac-wizard-connector"></div>
+            <div class="ac-wizard-step" data-step="4">
+              <div class="ac-step-circle">4</div>
+              <div class="ac-step-label">Parsing</div>
+            </div>
+            <div class="ac-wizard-connector"></div>
+            <div class="ac-wizard-step" data-step="5">
+              <div class="ac-step-circle">5</div>
+              <div class="ac-step-label">Tracciato</div>
+            </div>
+            <div class="ac-wizard-connector"></div>
+            <div class="ac-wizard-step" data-step="6">
+              <div class="ac-step-circle">6</div>
+              <div class="ac-step-label">Output</div>
+            </div>
+            <div class="ac-wizard-connector"></div>
+            <div class="ac-wizard-step" data-step="7">
+              <div class="ac-step-circle">7</div>
+              <div class="ac-step-label">Logger</div>
+            </div>
+          </div>
+
+          <!-- ============ STEP 1: AUTH ============ -->
+          <div class="ac-step-panel active" id="step-1">
+            <div class="ac-panel-header">
+              <h3 class="ac-panel-title">Step 1 — Autenticazione</h3>
+              <p class="ac-panel-desc">Seleziona il tipo di autenticazione e le credenziali da usare.</p>
+            </div>
+            <div class="ac-form-body">
+              <div class="control-group">
+                <label class="control-label">Nome input <span class="ac-required">*</span></label>
+                <div class="controls">
+                  <input type="text" id="f-name" class="input-xlarge" placeholder="es. api_auth_events"/>
+                  <span class="help-block">Identificatore univoco. Solo lettere, numeri e underscore.</span>
+                </div>
+              </div>
+              <div class="control-group">
+                <label class="control-label">Tipo autenticazione <span class="ac-required">*</span></label>
+                <div class="controls">
+                  <select id="f-auth-type" class="input-xlarge">
+                    <option value="">— Seleziona —</option>
+                    <option value="none">Nessuna (chiamata pubblica)</option>
+                    <option value="bearer">Bearer Token</option>
+                    <option value="basic">Basic Auth (user:password)</option>
+                    <option value="api_key_header">API Key — Header</option>
+                    <option value="api_key_query">API Key — Query param</option>
+                    <option value="oauth2_cc">OAuth2 Client Credentials</option>
+                  </select>
+                </div>
+              </div>
+              <!-- Credential selector (shown when auth != none) -->
+              <div class="control-group" id="auth-credential-group" style="display:none">
+                <label class="control-label">Credenziale (password.conf) <span class="ac-required">*</span></label>
+                <div class="controls ac-cred-row">
+                  <select id="f-credential" class="input-xlarge">
+                    <option value="">— Caricamento credenziali... —</option>
+                  </select>
+                  <a href="credential_manager" class="btn btn-default ac-btn-sm" target="_blank">
+                    <i class="icon-plus"></i> Nuova
+                  </a>
+                </div>
+                <span class="help-block">Le credenziali sono gestite in modo sicuro tramite password.conf di Splunk.</span>
+              </div>
+              <!-- OAuth2 extra fields -->
+              <div id="auth-oauth2-group" style="display:none">
+                <div class="control-group">
+                  <label class="control-label">Token URL <span class="ac-required">*</span></label>
+                  <div class="controls">
+                    <input type="text" id="f-token-url" class="input-xlarge" placeholder="https://auth.example.com/oauth/token"/>
+                  </div>
+                </div>
+                <div class="control-group">
+                  <label class="control-label">Scope (opzionale)</label>
+                  <div class="controls">
+                    <input type="text" id="f-oauth-scope" class="input-xlarge" placeholder="read:events write:none"/>
+                  </div>
+                </div>
+              </div>
+              <!-- API Key extra fields -->
+              <div id="auth-apikey-group" style="display:none">
+                <div class="control-group">
+                  <label class="control-label">Nome header / param <span class="ac-required">*</span></label>
+                  <div class="controls">
+                    <input type="text" id="f-apikey-param" class="input-xlarge" placeholder="es. X-API-Key oppure api_key"/>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============ STEP 2: ENDPOINT ============ -->
+          <div class="ac-step-panel" id="step-2">
+            <div class="ac-panel-header">
+              <h3 class="ac-panel-title">Step 2 — Endpoint e chiamate</h3>
+              <p class="ac-panel-desc">Configura URL, metodo e modalità di chiamata. Puoi aggiungere più chiamate in sequenza (cascata) o abilitare la paginazione automatica.</p>
+            </div>
+            <div class="ac-form-body">
+              <div id="ac-calls-container">
+                <!-- Populated dynamically by JS -->
+              </div>
+              <button class="btn btn-default ac-btn-add-call" id="btn-add-call">
+                <i class="icon-plus"></i> Aggiungi chiamata in cascata
+              </button>
+              <div class="ac-divider"></div>
+              <div class="control-group">
+                <label class="control-label">Paginazione</label>
+                <div class="controls">
+                  <select id="f-pagination" class="input-large">
+                    <option value="none">Nessuna</option>
+                    <option value="offset">Offset/Limit (page=N)</option>
+                    <option value="cursor">Cursor / next_token</option>
+                    <option value="link_header">Link header (RFC 5988)</option>
+                  </select>
+                </div>
+              </div>
+              <div id="pagination-details" style="display:none">
+                <div class="control-group">
+                  <label class="control-label">Param pagina</label>
+                  <div class="controls">
+                    <input type="text" id="f-page-param" class="input-medium" placeholder="page"/>
+                    <span class="help-inline">oppure</span>
+                    <input type="text" id="f-cursor-path" class="input-medium" placeholder="JSONPath cursore es: $.next_cursor"/>
+                  </div>
+                </div>
+                <div class="control-group">
+                  <label class="control-label">Max pagine</label>
+                  <div class="controls">
+                    <input type="number" id="f-max-pages" class="input-mini" value="100"/>
+                  </div>
+                </div>
+              </div>
+              <div class="control-group">
+                <label class="control-label">Intervallo (cron) <span class="ac-required">*</span></label>
+                <div class="controls ac-cron-row">
+                  <input type="text" id="f-schedule" class="input-medium" placeholder="*/5 * * * *"/>
+                  <span class="ac-cron-preview" id="cron-preview">ogni 5 minuti</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============ STEP 3: TEST CALL ============ -->
+          <div class="ac-step-panel" id="step-3">
+            <div class="ac-panel-header">
+              <h3 class="ac-panel-title">Step 3 — Test chiamata</h3>
+              <p class="ac-panel-desc">Esegue una chiamata reale verso l'endpoint configurato e mostra la risposta raw. La chiamata avviene lato server (le credenziali non transitano nel browser).</p>
+            </div>
+            <div class="ac-form-body">
+              <div class="ac-test-toolbar">
+                <button class="btn btn-primary" id="btn-run-test">
+                  <i class="icon-rotate-right"></i> Esegui test
+                </button>
+                <span class="ac-test-status" id="test-status"></span>
+              </div>
+              <div class="ac-test-response" id="test-response-wrap" style="display:none">
+                <div class="ac-test-meta">
+                  <span class="ac-badge" id="test-http-code"></span>
+                  <span class="ac-test-latency" id="test-latency"></span>
+                  <span class="ac-test-ctype" id="test-content-type"></span>
+                </div>
+                <div class="ac-response-tabs">
+                  <button class="ac-tab active" data-target="tab-raw">Raw</button>
+                  <button class="ac-tab" data-target="tab-pretty">Pretty</button>
+                  <button class="ac-tab" data-target="tab-tree">Tree (JSON)</button>
+                </div>
+                <div id="tab-raw" class="ac-tab-panel active">
+                  <pre class="ac-code-block" id="test-raw-output"></pre>
+                </div>
+                <div id="tab-pretty" class="ac-tab-panel">
+                  <pre class="ac-code-block" id="test-pretty-output"></pre>
+                </div>
+                <div id="tab-tree" class="ac-tab-panel">
+                  <div class="ac-json-tree" id="test-tree-output"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============ STEP 4: PARSING ============ -->
+          <div class="ac-step-panel" id="step-4">
+            <div class="ac-panel-header">
+              <h3 class="ac-panel-title">Step 4 — Parsing risposta</h3>
+              <p class="ac-panel-desc">Clicca sui campi nel tree JSON per selezionarli, oppure scrivi manualmente JSONPath / regex / colonna CSV.</p>
+            </div>
+            <div class="ac-form-body ac-parsing-layout">
+              <div class="ac-parsing-left">
+                <div class="ac-panel-section-title">Risposta (tree)</div>
+                <div class="ac-json-tree ac-json-tree--selectable" id="parsing-tree">
+                  <p class="ac-hint">Esegui prima il test (Step 3) per visualizzare il tree.</p>
+                </div>
+              </div>
+              <div class="ac-parsing-right">
+                <div class="ac-panel-section-title">Array radice (records)</div>
+                <div class="control-group">
+                  <div class="controls">
+                    <input type="text" id="f-array-root" class="input-xlarge" placeholder="$.data[*] oppure $.items[*]"/>
+                    <span class="help-block">JSONPath all'array di record da iterare. Lascia vuoto se la risposta è già un array.</span>
+                  </div>
+                </div>
+                <div class="ac-panel-section-title" style="margin-top:16px">Campi estratti</div>
+                <div id="ac-fields-list">
+                  <!-- Populated by JS when user clicks on tree -->
+                </div>
+                <button class="btn btn-default ac-btn-sm" id="btn-add-field">
+                  <i class="icon-plus"></i> Aggiungi campo manuale
+                </button>
+                <div class="ac-divider"></div>
+                <div class="ac-panel-section-title">Formato risposta</div>
+                <div class="control-group">
+                  <div class="controls">
+                    <select id="f-response-format" class="input-large">
+                      <option value="json">JSON</option>
+                      <option value="json_array">JSON array</option>
+                      <option value="csv">CSV (con header)</option>
+                      <option value="tsv">TSV</option>
+                      <option value="xml">XML</option>
+                      <option value="text">Testo libero (regex)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============ STEP 5: TRACCIATO ============ -->
+          <div class="ac-step-panel" id="step-5">
+            <div class="ac-panel-header">
+              <h3 class="ac-panel-title">Step 5 — Mapping tracciato standard</h3>
+              <p class="ac-panel-desc">Associa i campi estratti ai campi del tracciato standard aziendale. I campi marcati con * sono obbligatori.</p>
+            </div>
+            <div class="ac-form-body">
+              <div class="ac-tracciato-grid" id="ac-tracciato-grid">
+                <!-- Rendered by JS -->
+              </div>
+            </div>
+          </div>
+
+          <!-- ============ STEP 6: OUTPUT ============ -->
+          <div class="ac-step-panel" id="step-6">
+            <div class="ac-panel-header">
+              <h3 class="ac-panel-title">Step 6 — Destinazione output</h3>
+              <p class="ac-panel-desc">Configura index, sourcetype e source dove inviare gli eventi raccolti.</p>
+            </div>
+            <div class="ac-form-body">
+              <div class="control-group">
+                <label class="control-label">Index <span class="ac-required">*</span></label>
+                <div class="controls">
+                  <select id="f-index" class="input-xlarge">
+                    <option value="">— Caricamento indici... —</option>
+                  </select>
+                </div>
+              </div>
+              <div class="control-group">
+                <label class="control-label">Sourcetype <span class="ac-required">*</span></label>
+                <div class="controls">
+                  <input type="text" id="f-sourcetype" class="input-xlarge" placeholder="es. api_connect:auth_events"/>
+                </div>
+              </div>
+              <div class="control-group">
+                <label class="control-label">Source <span class="ac-required">*</span></label>
+                <div class="controls">
+                  <input type="text" id="f-source" class="input-xlarge" placeholder="es. https://api.example.com/v1/events"/>
+                </div>
+              </div>
+              <div class="control-group">
+                <label class="control-label">Host</label>
+                <div class="controls">
+                  <input type="text" id="f-host" class="input-xlarge" placeholder="Lascia vuoto per usare l'hostname del HF"/>
+                </div>
+              </div>
+              <div class="ac-divider"></div>
+              <div class="control-group">
+                <label class="control-label">Checkpoint (dedup)</label>
+                <div class="controls">
+                  <label class="checkbox">
+                    <input type="checkbox" id="f-checkpoint"/> Abilita checkpoint basato su un campo timestamp / ID
+                  </label>
+                </div>
+              </div>
+              <div id="checkpoint-detail" style="display:none">
+                <div class="control-group">
+                  <label class="control-label">Campo checkpoint</label>
+                  <div class="controls">
+                    <input type="text" id="f-checkpoint-field" class="input-large" placeholder="es. updated_at oppure id"/>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============ STEP 7: LOGGER ============ -->
+          <div class="ac-step-panel" id="step-7">
+            <div class="ac-panel-header">
+              <h3 class="ac-panel-title">Step 7 — Logger di esecuzione</h3>
+              <p class="ac-panel-desc">Il logger invia i log di esecuzione dello script a <code>_internal</code> con <code>sourcetype=custom_script_logger</code>. Devi solo definire la source per identificare questo input nei log.</p>
+            </div>
+            <div class="ac-form-body">
+              <div class="control-group">
+                <label class="control-label">Source del logger <span class="ac-required">*</span></label>
+                <div class="controls">
+                  <input type="text" id="f-logger-source" class="input-xlarge" placeholder="es. api_connect:auth_events:runner"/>
+                  <span class="help-block">
+                    I log saranno ricercabili con:
+                    <code>index=_internal sourcetype=custom_script_logger source=&lt;valore&gt;</code>
+                  </span>
+                </div>
+              </div>
+              <div class="ac-divider"></div>
+              <div class="ac-summary-box" id="ac-final-summary">
+                <div class="ac-summary-title"><i class="icon-info-circle"></i> Riepilogo configurazione</div>
+                <div id="ac-summary-content"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Wizard navigation -->
+          <div class="ac-wizard-nav">
+            <button class="btn btn-default" id="btn-prev" disabled>
+              <i class="icon-chevron-left"></i> Precedente
+            </button>
+            <div class="ac-wizard-nav-center">
+              <span class="ac-step-indicator" id="step-indicator">Step 1 di 7</span>
+            </div>
+            <div class="ac-wizard-nav-right">
+              <button class="btn btn-default" id="btn-save-draft">
+                <i class="icon-floppy-disk"></i> Salva bozza
+              </button>
+              <button class="btn btn-primary" id="btn-next">
+                Successivo <i class="icon-chevron-right"></i>
+              </button>
+              <button class="btn btn-primary ac-btn-success" id="btn-generate" style="display:none">
+                <i class="icon-check"></i> Genera input
+              </button>
+            </div>
+          </div>
+
+          <!-- Generation result modal -->
+          <div id="ac-gen-modal" class="ac-modal-overlay" style="display:none">
+            <div class="ac-modal ac-modal--wide">
+              <div class="ac-modal-header">
+                <span class="ac-modal-title" id="gen-modal-title">Generazione in corso...</span>
+              </div>
+              <div class="ac-modal-body" id="gen-modal-body">
+                <div class="ac-spinner"><i class="icon-rotate-right"></i> Generazione script e configurazione...</div>
+              </div>
+              <div class="ac-modal-footer" id="gen-modal-footer" style="display:none">
+                <a href="dashboard" class="btn btn-primary">Vai alla Dashboard</a>
+                <button class="btn btn-default" id="btn-view-script">
+                  <i class="icon-code"></i> Visualizza script generato
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

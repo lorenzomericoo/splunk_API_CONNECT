@@ -1,0 +1,105 @@
+<dashboard version="1.1" theme="light" script="api_connect_dashboard.js" stylesheet="api_connect.css">
+  <label>API Connect — Dashboard</label>
+  <description>Monitoraggio di tutti gli input API configurati</description>
+
+  <row>
+    <panel>
+      <html>
+        <div id="ac-dashboard-root">
+          <!-- Header toolbar -->
+          <div class="ac-toolbar">
+            <span class="ac-toolbar-title">
+              <i class="icon-settings"></i> Input API configurati
+            </span>
+            <div class="ac-toolbar-actions">
+              <a href="input_builder" class="btn btn-primary ac-btn-new">
+                <i class="icon-plus"></i> Nuovo Input
+              </a>
+              <button class="btn btn-default" id="ac-refresh-btn">
+                <i class="icon-rotate-right"></i> Aggiorna
+              </button>
+            </div>
+          </div>
+
+          <!-- Summary cards -->
+          <div class="ac-summary-cards" id="ac-summary-cards">
+            <div class="ac-card ac-card--stat">
+              <div class="ac-card-label">Input totali</div>
+              <div class="ac-card-value" id="stat-total">—</div>
+            </div>
+            <div class="ac-card ac-card--stat ac-card--ok">
+              <div class="ac-card-label">OK (ultimo run)</div>
+              <div class="ac-card-value" id="stat-ok">—</div>
+            </div>
+            <div class="ac-card ac-card--stat ac-card--error">
+              <div class="ac-card-label">ERROR (ultimo run)</div>
+              <div class="ac-card-value" id="stat-error">—</div>
+            </div>
+            <div class="ac-card ac-card--stat">
+              <div class="ac-card-label">Log inviati oggi</div>
+              <div class="ac-card-value" id="stat-logs">—</div>
+            </div>
+          </div>
+
+          <!-- Inputs table -->
+          <div class="ac-table-wrap">
+            <table class="table table-chrome ac-inputs-table" id="ac-inputs-table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Endpoint</th>
+                  <th>Auth</th>
+                  <th>Schedule</th>
+                  <th>Index / Sourcetype</th>
+                  <th>Ultimo run</th>
+                  <th>Stato</th>
+                  <th>Log (ult. run)</th>
+                  <th>Latenza</th>
+                  <th>Prossima esec.</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="ac-inputs-tbody">
+                <tr>
+                  <td colspan="11" class="ac-loading">
+                    <div class="ac-spinner">
+                      <i class="icon-rotate-right"></i> Caricamento...
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Empty state (hidden by default) -->
+          <div class="ac-empty-state" id="ac-empty-state" style="display:none">
+            <i class="icon-settings ac-empty-icon"></i>
+            <p class="ac-empty-title">Nessun input configurato</p>
+            <p class="ac-empty-sub">Crea il tuo primo input API con il wizard guidato</p>
+            <a href="input_builder" class="btn btn-primary">
+              <i class="icon-plus"></i> Nuovo Input
+            </a>
+          </div>
+
+          <!-- Delete confirm modal -->
+          <div id="ac-delete-modal" class="ac-modal-overlay" style="display:none">
+            <div class="ac-modal">
+              <div class="ac-modal-header">
+                <span class="ac-modal-title">Conferma eliminazione</span>
+              </div>
+              <div class="ac-modal-body">
+                <p>Vuoi eliminare l'input <strong id="ac-delete-name"></strong>?</p>
+                <p class="ac-modal-warn">Questa operazione rimuoverà anche lo script generato e la stanza in inputs.conf.</p>
+              </div>
+              <div class="ac-modal-footer">
+                <button class="btn btn-default" id="ac-delete-cancel">Annulla</button>
+                <button class="btn btn-primary ac-btn-danger" id="ac-delete-confirm">Elimina</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

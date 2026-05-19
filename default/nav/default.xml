@@ -1,0 +1,5 @@
+<nav search_view="search" color="#4A90D9">
+  <view name="dashboard" default="true" label="Dashboard"/>
+  <view name="input_builder" label="Input Builder"/>
+  <view name="credential_manager" label="Credential Manager"/>
+</nav>

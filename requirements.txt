@@ -1,0 +1,18 @@
+# requirements.txt — API Connect
+#
+# Tutte le dipendenze Python sono già incluse nell'ambiente Splunk embedded.
+# NON installare pacchetti aggiuntivi: l'app usa solo librerie standard + splunklib.
+#
+# Librerie usate:
+#   - splunklib  (splunk-sdk)    → inclusa in $SPLUNK_HOME/lib
+#   - urllib     (stdlib)        → HTTP client
+#   - json       (stdlib)        → JSON parsing
+#   - csv        (stdlib)        → CSV parsing
+#   - xml.etree  (stdlib)        → XML parsing
+#   - re         (stdlib)        → regex / text parsing
+#   - base64     (stdlib)        → autenticazione Basic / OAuth2
+#   - logging    (stdlib)        → logger standard
+#   - os, sys, time, io          → utility
+#
+# Per sviluppo locale (test fuori da Splunk):
+#   pip install splunk-sdk
