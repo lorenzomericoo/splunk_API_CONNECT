@@ -1,7 +1,11 @@
 /**
- * API Connect — Input Builder Wizard JS
- * Gestisce i 7 step del wizard: auth, endpoint, test, parsing,
- * tracciato, output, logger → genera lo script modular input.
+ * API Connect — Input Builder Wizard v2
+ * Step 2 è ora un Chain Builder stile Postman:
+ *  - card per ogni call con URL, method, headers, body, auth override, error policy
+ *  - test live per-call con risposta (Raw/Tree/Variabili) nel pannello destro
+ *  - connettori con chip delle variabili disponibili dalla call precedente
+ *  - drag-to-reorder
+ *  - cascade: {{variabile}} negli URL/body delle call successive
  */
 require([
   'jquery',
@@ -13,599 +17,830 @@ require([
   var service = mvc.createService();
   var TOTAL_STEPS = 7;
   var currentStep = 1;
-  var testResponseData = null; // raw parsed response for tree/parsing
-  var callCount = 0;
-  var editKey = null; // set if editing existing input
+  var editKey = null;
 
-  // State object
+  /* ── State ─────────────────────────────────────────────────── */
   var state = {
-    name: '', auth_type: '', credential_realm: '', token_url: '',
-    oauth_scope: '', apikey_param: '',
-    calls: [], pagination_type: 'none', page_param: '', cursor_path: '',
+    name: '', auth_type: 'none', credential_realm: '',
+    token_url: '', oauth_scope: '', apikey_param: '',
+    /* calls: array di oggetti call (vedi newCallObj) */
+    calls: [],
+    pagination_type: 'none', page_param: 'page', cursor_path: '',
     max_pages: 100, schedule: '*/5 * * * *',
     response_format: 'json', array_root: '',
-    extracted_fields: [],
-    field_mapping: {},
+    extracted_fields: [], field_mapping: {},
     index: '', sourcetype: '', source: '', host: '',
     checkpoint: false, checkpoint_field: '',
     logger_source: ''
   };
 
+  /* Le risposte live di ogni call (indicizzate per callId) */
+  var callResponses = {};
+  /* Variabili disponibili per ogni slot (indicizzate per callId) */
+  var callVars = {};
+  /* Contatore univoco per le call card */
+  var callIdSeq = 0;
+
   var TRACCIATO_FIELDS = [
-    { key: 'time',          label: 'time',           required: true,  hint: 'Timestamp evento (epoch o ISO)' },
-    { key: 'hostname',      label: 'hostname',        required: true,  hint: 'Host sorgente evento' },
-    { key: 'nomeapp',       label: 'nomeapp',         required: true,  hint: 'Nome applicazione sorgente' },
-    { key: 'tipoazione',    label: 'tipoazione',      required: true,  hint: 'Tipo di azione (login, logout, ...)' },
-    { key: 'clientip',      label: 'clientip',        required: false, hint: 'IP del client' },
-    { key: 'username',      label: 'username',        required: false, hint: 'Utente coinvolto' },
-    { key: 'tipooperazione',label: 'tipooperazione',  required: false, hint: 'Tipo operazione specifica' },
-    { key: 'valorePrima',   label: 'valore prima',    required: false, hint: 'Valore del campo prima della modifica' },
-    { key: 'valoreDP',      label: 'valore dopo',     required: false, hint: 'Valore del campo dopo la modifica' },
-    { key: 'target',        label: 'target',          required: false, hint: 'Oggetto/risorsa target' },
-    { key: 'note',          label: 'note',            required: false, hint: 'Note aggiuntive libere' }
+    { key:'time',           label:'time',           required:true,  hint:'Timestamp (epoch o ISO)' },
+    { key:'hostname',       label:'hostname',        required:true,  hint:'Host sorgente evento' },
+    { key:'nomeapp',        label:'nomeapp',         required:true,  hint:'Nome applicazione sorgente' },
+    { key:'tipoazione',     label:'tipoazione',      required:true,  hint:'Tipo azione (login, logout…)' },
+    { key:'clientip',       label:'clientip',        required:false, hint:'IP del client' },
+    { key:'username',       label:'username',        required:false, hint:'Utente coinvolto' },
+    { key:'tipooperazione', label:'tipooperazione',  required:false, hint:'Tipo operazione specifica' },
+    { key:'valorePrima',    label:'valore prima',    required:false, hint:'Valore prima della modifica' },
+    { key:'valoreDP',       label:'valore dopo',     required:false, hint:'Valore dopo la modifica' },
+    { key:'target',         label:'target',          required:false, hint:'Risorsa target' },
+    { key:'note',           label:'note',            required:false, hint:'Note aggiuntive libere' }
   ];
 
-  // ---- CRON human preview ----
   var CRON_MAP = {
-    '*/1 * * * *': 'ogni 1 minuto',
-    '*/2 * * * *': 'ogni 2 minuti',
-    '*/5 * * * *': 'ogni 5 minuti',
-    '*/10 * * * *': 'ogni 10 minuti',
-    '*/15 * * * *': 'ogni 15 minuti',
-    '*/30 * * * *': 'ogni 30 minuti',
-    '0 * * * *': 'ogni ora',
-    '0 */2 * * *': 'ogni 2 ore',
-    '0 0 * * *': 'ogni giorno a mezzanotte',
-    '0 6 * * *': 'ogni giorno alle 06:00',
+    '*/1 * * * *':'ogni 1 minuto','*/2 * * * *':'ogni 2 minuti',
+    '*/5 * * * *':'ogni 5 minuti','*/10 * * * *':'ogni 10 minuti',
+    '*/15 * * * *':'ogni 15 minuti','*/30 * * * *':'ogni 30 minuti',
+    '0 * * * *':'ogni ora','0 */2 * * *':'ogni 2 ore',
+    '0 0 * * *':'ogni giorno'
   };
 
-  function cronHuman(expr) {
-    return CRON_MAP[expr] || expr;
+  /* ── Utility ────────────────────────────────────────────────── */
+  function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function cronHuman(e){ return CRON_MAP[e]||e; }
+
+  function newCallObj(){
+    callIdSeq++;
+    return {
+      id: callIdSeq, name: 'Chiamata '+callIdSeq,
+      url:'', method:'GET', headers:'{}', body:'',
+      auth_type:'inherited', credential_realm:'',
+      apikey_param:'', token_url:'',
+      error_policy:'default',
+      join_key: '', join_mode: 'merge'
+    };
   }
 
-  // ---- Utility ----
-  function escHtml(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-
-  // ---- Step navigation ----
-  function goToStep(n) {
-    if (n < 1 || n > TOTAL_STEPS) return;
+  /* ── Step navigation ─────────────────────────────────────────── */
+  function goToStep(n){
+    if(n<1||n>TOTAL_STEPS) return;
     collectCurrentStep();
-    currentStep = n;
+    currentStep=n;
     renderStep();
   }
 
-  function renderStep() {
+  function renderStep(){
     $('.ac-step-panel').removeClass('active');
-    $('#step-' + currentStep).addClass('active');
-
-    $('.ac-wizard-step').each(function() {
-      var s = parseInt($(this).data('step'), 10);
+    $('#step-'+currentStep).addClass('active');
+    $('.ac-wizard-step').each(function(){
+      var s=parseInt($(this).data('step'),10);
       $(this).removeClass('active done');
-      if (s === currentStep) $(this).addClass('active');
-      else if (s < currentStep) $(this).addClass('done');
+      if(s===currentStep) $(this).addClass('active');
+      else if(s<currentStep) $(this).addClass('done');
     });
-
-    $('#step-indicator').text('Step ' + currentStep + ' di ' + TOTAL_STEPS);
-    $('#btn-prev').prop('disabled', currentStep === 1);
-
-    if (currentStep === TOTAL_STEPS) {
-      $('#btn-next').hide();
-      $('#btn-generate').show();
-      renderSummary();
+    $('#step-indicator').text('Step '+currentStep+' di '+TOTAL_STEPS);
+    $('#btn-prev').prop('disabled',currentStep===1);
+    if(currentStep===TOTAL_STEPS){
+      $('#btn-next').hide(); $('#btn-generate').show(); renderSummary();
     } else {
-      $('#btn-next').show();
-      $('#btn-generate').hide();
+      $('#btn-next').show(); $('#btn-generate').hide();
     }
-
-    if (currentStep === 4) renderParsingTree();
-    if (currentStep === 5) renderTracciato();
-    if (currentStep === 6) loadIndexes();
+    if(currentStep===2) renderChain();
+    if(currentStep===4) renderParsingTab();
+    if(currentStep===5) renderTracciato();
+    if(currentStep===6) loadIndexes();
   }
 
-  // ---- Collect state from current step ----
-  function collectCurrentStep() {
-    switch (currentStep) {
+  /* ── Collect state ───────────────────────────────────────────── */
+  function collectCurrentStep(){
+    switch(currentStep){
       case 1:
-        state.name = $('#f-name').val().trim();
-        state.auth_type = $('#f-auth-type').val();
-        state.credential_realm = $('#f-credential').val();
-        state.token_url = $('#f-token-url').val().trim();
-        state.oauth_scope = $('#f-oauth-scope').val().trim();
-        state.apikey_param = $('#f-apikey-param').val().trim();
+        state.name=$('#f-name').val().trim();
+        state.auth_type=$('#f-auth-type').val();
+        state.credential_realm=$('#f-credential').val();
+        state.token_url=$('#f-token-url').val().trim();
+        state.oauth_scope=$('#f-oauth-scope').val().trim();
+        state.apikey_param=$('#f-apikey-param').val().trim();
         break;
-      case 2:
-        collectCalls();
-        state.pagination_type = $('#f-pagination').val();
-        state.page_param = $('#f-page-param').val().trim();
-        state.cursor_path = $('#f-cursor-path').val().trim();
-        state.max_pages = parseInt($('#f-max-pages').val(), 10) || 100;
-        state.schedule = $('#f-schedule').val().trim();
-        break;
-      case 3: break; // test only, nothing to collect
+      case 2: collectChainState(); break;
+      case 3: break;
       case 4:
-        state.response_format = $('#f-response-format').val();
-        state.array_root = $('#f-array-root').val().trim();
-        state.extracted_fields = collectExtractedFields();
+        state.response_format=$('#f-response-format').val();
+        state.array_root=$('#f-array-root').val().trim();
+        state.extracted_fields=collectExtractedFields();
         break;
-      case 5:
-        collectTracciato();
-        break;
+      case 5: collectTracciato(); break;
       case 6:
-        state.index = $('#f-index').val();
-        state.sourcetype = $('#f-sourcetype').val().trim();
-        state.source = $('#f-source').val().trim();
-        state.host = $('#f-host').val().trim();
-        state.checkpoint = $('#f-checkpoint').is(':checked');
-        state.checkpoint_field = $('#f-checkpoint-field').val().trim();
+        state.index=$('#f-index').val();
+        state.sourcetype=$('#f-sourcetype').val().trim();
+        state.source=$('#f-source').val().trim();
+        state.host=$('#f-host').val().trim();
+        state.checkpoint=$('#f-checkpoint').is(':checked');
+        state.checkpoint_field=$('#f-checkpoint-field').val().trim();
         break;
       case 7:
-        state.logger_source = $('#f-logger-source').val().trim();
+        state.logger_source=$('#f-logger-source').val().trim();
         break;
     }
   }
 
-  function collectCalls() {
-    state.calls = [];
-    $('.ac-call-card').each(function(i) {
-      var $c = $(this);
-      state.calls.push({
-        url: $c.find('.call-url').val().trim(),
-        method: $c.find('.call-method').val(),
-        headers: $c.find('.call-headers').val().trim(),
-        body: $c.find('.call-body').val().trim(),
-        chain_input: $c.find('.call-chain-input').val().trim()
-      });
+  function collectChainState(){
+    state.schedule=$('#f-schedule').val().trim();
+    state.pagination_type=$('#f-pagination').val();
+    state.page_param=$('#f-page-param').val().trim();
+    state.cursor_path=$('#f-cursor-path').val().trim();
+    state.max_pages=parseInt($('#f-max-pages').val(),10)||100;
+    state.calls=[];
+    $('.ac-call-card').each(function(){
+      var $c=$(this);
+      var id=parseInt($c.data('call-id'),10);
+      var obj=state.calls.filter(function(c){return c.id===id;})[0]||{id:id};
+      obj.name=$c.find('.ac-call-name-input').val().trim()||'Chiamata';
+      obj.url=$c.find('.ac-call-url').val().trim();
+      obj.method=$c.find('.ac-call-method').val();
+      obj.headers=$c.find('.ac-call-headers').val().trim();
+      obj.body=$c.find('.ac-call-body-input').val().trim();
+      obj.auth_type=$c.find('.ac-call-auth-type').val();
+      obj.credential_realm=$c.find('.ac-call-credential').val();
+      obj.apikey_param=$c.find('.ac-call-apikey-param').val();
+      obj.error_policy=$c.find('.ac-call-error-policy').val();
+      obj.join_key=$c.find('.ac-call-join-key').val().trim();
+      state.calls.push(obj);
     });
   }
 
-  function collectExtractedFields() {
-    var fields = [];
-    $('.ac-field-row').each(function() {
-      var path = $(this).find('.field-path').val().trim();
-      var alias = $(this).find('.field-alias').val().trim();
-      if (path) fields.push({ path: path, alias: alias || path.split('.').pop() });
-    });
-    return fields;
-  }
-
-  function collectTracciato() {
-    TRACCIATO_FIELDS.forEach(function(tf) {
-      state.field_mapping[tf.key] = $('#map-' + tf.key).val().trim();
-    });
-  }
-
-  // ---- Step 1: Auth type toggle ----
-  $('#f-auth-type').on('change', function() {
-    var v = $(this).val();
-    $('#auth-credential-group').toggle(v !== '' && v !== 'none');
-    $('#auth-oauth2-group').toggle(v === 'oauth2_cc');
-    $('#auth-apikey-group').toggle(v === 'api_key_header' || v === 'api_key_query');
-    if (v !== 'none' && v !== '') loadCredentials();
+  /* ── Step 1: Auth ────────────────────────────────────────────── */
+  $('#f-auth-type').on('change',function(){
+    var v=$(this).val();
+    $('#auth-credential-group').toggle(v!==''&&v!=='none');
+    $('#auth-oauth2-group').toggle(v==='oauth2_cc');
+    $('#auth-apikey-group').toggle(v==='api_key_header'||v==='api_key_query');
+    if(v!=='none'&&v!=='') loadCredentials('#f-credential');
   });
 
-  function loadCredentials() {
-    service.get('/servicesNS/-/api_connect/storage/passwords', { count: 200, output_mode: 'json' }, function(err, resp) {
-      if (err) return;
-      var $sel = $('#f-credential').empty().append('<option value="">— Seleziona credenziale —</option>');
-      var entries = (resp.data && resp.data.entry) ? resp.data.entry : [];
-      entries.filter(function(e){ return e.content && e.content.realm && e.content.realm.indexOf('api_connect:') === 0; })
-        .forEach(function(e) {
-          var realm = e.content.realm;
-          var label = realm.replace('api_connect:', '') + ' (' + e.content.username + ')';
-          $sel.append('<option value="' + escHtml(realm) + '">' + escHtml(label) + '</option>');
+  function loadCredentials(sel){
+    service.get('/servicesNS/-/api_connect/storage/passwords',{count:200,output_mode:'json'},function(err,resp){
+      if(err) return;
+      var $s=$(sel).empty().append('<option value="">— Seleziona credenziale —</option>');
+      ((resp.data&&resp.data.entry)||[])
+        .filter(function(e){return e.content&&e.content.realm&&e.content.realm.indexOf('api_connect:')===0;})
+        .forEach(function(e){
+          var r=e.content.realm;
+          $s.append('<option value="'+esc(r)+'">'+esc(r.replace('api_connect:',''))+' ('+esc(e.content.username)+')</option>');
         });
     });
   }
 
-  // ---- Step 2: Endpoint calls ----
-  function addCallCard(data) {
-    callCount++;
-    var idx = callCount;
-    var d = data || { url: '', method: 'GET', headers: '', body: '', chain_input: '' };
-    var $card = $([
-      '<div class="ac-call-card" data-call="' + idx + '">',
-        '<div class="ac-call-card-header">',
-          '<span class="ac-call-number">Chiamata ' + idx + '</span>',
-          idx > 1 ? '<button class="btn btn-default btn-sm ac-btn-remove-call"><i class="icon-minus"></i> Rimuovi</button>' : '',
+  /* ── Step 2: Chain Builder ───────────────────────────────────── */
+  function renderChain(){
+    var $area=$('#ac-chain-area');
+    if($area.find('.ac-call-card').length===0&&state.calls.length===0){
+      addCallToChain();
+    } else if(state.calls.length>0&&$area.find('.ac-call-card').length===0){
+      state.calls.forEach(function(c){ addCallToChain(c); });
+    }
+    updateAllConnectors();
+  }
+
+  function addCallToChain(data){
+    var call=data||newCallObj();
+    if(!data) state.calls.push(call);
+    var $area=$('#ac-chain-area');
+    /* Connettore prima della card (tranne la prima) */
+    if($area.find('.ac-call-card').length>0){
+      $area.append(buildConnectorHtml(call.id));
+    }
+    $area.append(buildCallCardHtml(call));
+    /* Carica credenziali nel select della call */
+    loadCredentials('#ac-call-cred-'+call.id);
+    /* Init response area */
+    showRespPlaceholder(call.id);
+  }
+
+  function buildCallCardHtml(c){
+    var authOverrideOptions=[
+      '<option value="inherited"'+(c.auth_type==='inherited'?' selected':'')+'> Ereditata (auth globale)</option>',
+      '<option value="none"'+(c.auth_type==='none'?' selected':'')+'> Nessuna</option>',
+      '<option value="bearer"'+(c.auth_type==='bearer'?' selected':'')+'> Bearer Token</option>',
+      '<option value="basic"'+(c.auth_type==='basic'?' selected':'')+'> Basic Auth</option>',
+      '<option value="api_key_header"'+(c.auth_type==='api_key_header'?' selected':'')+'> API Key Header</option>',
+      '<option value="api_key_query"'+(c.auth_type==='api_key_query'?' selected':'')+'> API Key Query</option>',
+      '<option value="oauth2_cc"'+(c.auth_type==='oauth2_cc'?' selected':'')+'> OAuth2 CC</option>'
+    ].join('');
+    var errorPolicyOptions=[
+      '<option value="default">Default (stop on error)</option>',
+      '<option value="retry_429">429 → retry 3× backoff</option>',
+      '<option value="skip_404">404 → skip record</option>',
+      '<option value="skip_all_4xx">4xx → skip record</option>',
+      '<option value="stop_5xx">5xx → stop + log _internal</option>',
+      '<option value="skip_all">Tutti gli errori → skip</option>'
+    ].join('');
+    return [
+      '<div class="ac-call-card" data-call-id="'+c.id+'">',
+        '<div class="ac-call-header">',
+          '<span class="ac-drag-handle" title="Trascina per riordinare">⠿</span>',
+          '<div class="ac-call-num">'+c.id+'</div>',
+          '<input class="ac-call-name-input" value="'+esc(c.name||'Chiamata '+c.id)+'" style="border:none;background:transparent;font-weight:600;font-size:13px;flex:1;outline:none;color:inherit"/>',
+          '<span class="ac-method-badge ac-method-GET ac-call-method-badge">GET</span>',
+          '<span class="ac-auth-tag ac-call-auth-display">inherited</span>',
+          '<div class="ac-status-dot" id="ac-dot-'+c.id+'"></div>',
+          '<span class="ac-call-latency" id="ac-lat-'+c.id+'"></span>',
+          '<button class="btn btn-default ac-btn-sm ac-run-call-btn" data-call-id="'+c.id+'" title="Test questa call">▶ Run</button>',
+          '<button class="btn btn-default ac-btn-sm ac-remove-call-btn" data-call-id="'+c.id+'" title="Rimuovi">✕</button>',
+          '<span class="ac-call-chevron">›</span>',
         '</div>',
-        '<div class="control-group">',
-          '<label class="control-label">URL <span class="ac-required">*</span></label>',
-          '<div class="controls">',
-            '<input type="text" class="input-xlarge call-url" value="' + escHtml(d.url) + '" placeholder="https://api.example.com/v1/events"/>',
-            idx > 1 ? '<span class="help-block">Puoi usare <code>{{campo}}</code> per inserire valori dalla chiamata precedente.</span>' : '',
+        '<div class="ac-call-body" id="ac-call-body-'+c.id+'">',
+          /* LEFT */
+          '<div class="ac-call-left">',
+            '<div class="ac-cf-row">',
+              '<span class="ac-cf-label">URL <span class="ac-required">*</span></span>',
+              '<input class="ac-call-url" value="'+esc(c.url)+'" placeholder="https://api.example.com/v1/endpoint"/>',
+            '</div>',
+            '<div class="ac-cf-row">',
+              '<span class="ac-cf-label">Metodo</span>',
+              '<select class="ac-call-method">',
+                '<option'+(c.method==='GET'?' selected':'')+'>GET</option>',
+                '<option'+(c.method==='POST'?' selected':'')+'>POST</option>',
+                '<option'+(c.method==='PUT'?' selected':'')+'>PUT</option>',
+                '<option'+(c.method==='PATCH'?' selected':'')+'>PATCH</option>',
+                '<option'+(c.method==='DELETE'?' selected':'')+'>DELETE</option>',
+              '</select>',
+            '</div>',
+            '<div class="ac-cf-row">',
+              '<span class="ac-cf-label">Headers extra (JSON)</span>',
+              '<textarea class="ac-call-headers" rows="2">'+esc(c.headers||'{}')+' </textarea>',
+            '</div>',
+            '<div class="ac-cf-row">',
+              '<span class="ac-cf-label">Body (POST/PUT)</span>',
+              '<textarea class="ac-call-body-input" rows="3" placeholder=\'{"key": "{{var_da_call_prec}}"}\'>'+(c.body?esc(c.body):'')+'</textarea>',
+            '</div>',
+            '<div class="ac-cf-row">',
+              '<span class="ac-cf-label">Auth override</span>',
+              '<select class="ac-call-auth-type">'+authOverrideOptions+'</select>',
+            '</div>',
+            '<div class="ac-cf-row ac-call-cred-row" style="display:none">',
+              '<span class="ac-cf-label">Credenziale</span>',
+              '<div class="ac-cf-inline">',
+                '<select class="ac-call-credential" id="ac-call-cred-'+c.id+'"><option>Caricamento...</option></select>',
+              '</div>',
+            '</div>',
+            '<div class="ac-cf-row ac-call-apikey-row" style="display:none">',
+              '<span class="ac-cf-label">Nome header/param</span>',
+              '<input class="ac-call-apikey-param" value="'+esc(c.apikey_param||'')+'" placeholder="X-API-Key"/>',
+            '</div>',
+            '<div class="ac-cf-row">',
+              '<span class="ac-cf-label">Error policy</span>',
+              '<select class="ac-call-error-policy">'+errorPolicyOptions+'</select>',
+            '</div>',
+            '<div class="ac-cf-row">',
+              '<span class="ac-cf-label">Join su (chiave per merge)</span>',
+              '<input class="ac-call-join-key" value="'+esc(c.join_key||'')+'" placeholder="id — lascia vuoto per cascata semplice"/>',
+            '</div>',
           '</div>',
-        '</div>',
-        '<div class="control-group">',
-          '<label class="control-label">Metodo</label>',
-          '<div class="controls" style="display:flex;gap:8px;align-items:center">',
-            '<select class="call-method input-small">',
-              '<option value="GET"' + (d.method==='GET'?' selected':'') + '>GET</option>',
-              '<option value="POST"' + (d.method==='POST'?' selected':'') + '>POST</option>',
-              '<option value="PUT"' + (d.method==='PUT'?' selected':'') + '>PUT</option>',
-              '<option value="PATCH"' + (d.method==='PATCH'?' selected':'') + '>PATCH</option>',
-              '<option value="DELETE"' + (d.method==='DELETE'?' selected':'') + '>DELETE</option>',
-            '</select>',
-          '</div>',
-        '</div>',
-        '<div class="control-group">',
-          '<label class="control-label">Headers aggiuntivi (JSON)</label>',
-          '<div class="controls">',
-            '<textarea class="input-xlarge call-headers" rows="2" placeholder=\'{"X-Custom": "value"}\'>' + escHtml(d.headers) + '</textarea>',
-          '</div>',
-        '</div>',
-        '<div class="control-group">',
-          '<label class="control-label">Body (per POST/PUT/PATCH)</label>',
-          '<div class="controls">',
-            '<textarea class="input-xlarge call-body" rows="3" placeholder=\'{"filter": "{{token_from_prev_call}}"}\'>' + escHtml(d.body) + '</textarea>',
+          /* RIGHT: risposta */
+          '<div class="ac-call-right">',
+            '<div class="ac-resp-header">',
+              '<span class="ac-resp-label">Risposta live</span>',
+              '<span id="ac-resp-code-'+c.id+'" class="ac-badge ac-badge--none">—</span>',
+              '<span id="ac-resp-lat-'+c.id+'" style="font-size:11px;color:var(--text-muted-color,#8b959e)"></span>',
+            '</div>',
+            '<div class="ac-resp-tabs">',
+              '<button class="ac-resp-tab active" data-call-id="'+c.id+'" data-tab="raw">Raw</button>',
+              '<button class="ac-resp-tab" data-call-id="'+c.id+'" data-tab="tree">Tree</button>',
+              '<button class="ac-resp-tab" data-call-id="'+c.id+'" data-tab="vars">Variabili</button>',
+            '</div>',
+            '<div id="ac-rtab-raw-'+c.id+'"  class="ac-resp-panel active"><div class="ac-resp-placeholder" id="ac-resp-placeholder-'+c.id+'">Premi ▶ Run per testare la chiamata</div><pre class="ac-resp-code" id="ac-resp-raw-'+c.id+'" style="display:none"></pre></div>',
+            '<div id="ac-rtab-tree-'+c.id+'" class="ac-resp-panel"><div class="ac-resp-tree" id="ac-resp-tree-'+c.id+'"></div></div>',
+            '<div id="ac-rtab-vars-'+c.id+'" class="ac-resp-panel"><div class="ac-resp-vars" id="ac-resp-vars-'+c.id+'"></div></div>',
           '</div>',
         '</div>',
       '</div>'
-    ].join(''));
-    $('#ac-calls-container').append($card);
+    ].join('');
   }
 
-  $('#btn-add-call').on('click', function() { addCallCard(); });
-  $(document).on('click', '.ac-btn-remove-call', function() {
-    $(this).closest('.ac-call-card').remove();
+  function buildConnectorHtml(callId){
+    return '<div class="ac-chain-connector" id="ac-connector-before-'+callId+'">'+
+      '<div class="ac-chain-connector-line"></div>'+
+      '<div class="ac-chain-connector-body">'+
+        '<span class="ac-chain-connector-label">cascata — variabili disponibili</span>'+
+        '<div class="ac-var-chips" id="ac-connector-vars-'+callId+'">'+
+          '<span style="font-size:11px;color:var(--text-muted-color,#8b959e);font-style:italic">Esegui la call precedente per vedere le variabili</span>'+
+        '</div>'+
+      '</div>'+
+      '<div class="ac-chain-connector-line"></div>'+
+    '</div>';
+  }
+
+  /* ── Drag to reorder ─────────────────────────────────────────── */
+  var dragSrcId=null;
+  $(document).on('dragstart','.ac-call-card',function(e){
+    dragSrcId=$(this).data('call-id');
+    $(this).addClass('ac-dragging');
+    e.originalEvent.dataTransfer.effectAllowed='move';
+  });
+  $(document).on('dragend','.ac-call-card',function(){
+    $(this).removeClass('ac-dragging');
+    $('.ac-call-card').removeClass('ac-drag-over');
+  });
+  $(document).on('dragover','.ac-call-card',function(e){
+    e.preventDefault();
+    if($(this).data('call-id')!==dragSrcId) $(this).addClass('ac-drag-over');
+  });
+  $(document).on('dragleave','.ac-call-card',function(){
+    $(this).removeClass('ac-drag-over');
+  });
+  $(document).on('drop','.ac-call-card',function(e){
+    e.preventDefault();
+    var targetId=$(this).data('call-id');
+    $(this).removeClass('ac-drag-over');
+    if(dragSrcId===targetId) return;
+    /* swap nella catena DOM e in state.calls */
+    collectChainState();
+    var srcIdx=state.calls.findIndex(function(c){return c.id===dragSrcId;});
+    var tgtIdx=state.calls.findIndex(function(c){return c.id===targetId;});
+    if(srcIdx<0||tgtIdx<0) return;
+    var tmp=state.calls.splice(srcIdx,1)[0];
+    state.calls.splice(tgtIdx,0,tmp);
+    /* Re-render chain */
+    $('#ac-chain-area').empty();
+    var savedCalls=state.calls.slice();
+    state.calls=[];
+    savedCalls.forEach(function(c){ addCallToChain(c); });
+    updateAllConnectors();
   });
 
-  $('#f-schedule').on('input', function() {
-    $('#cron-preview').text(cronHuman($(this).val().trim()));
+  /* make cards draggable */
+  $(document).on('mouseenter','.ac-call-card',function(){
+    $(this).attr('draggable','true');
   });
 
-  $('#f-pagination').on('change', function() {
-    $('#pagination-details').toggle($(this).val() !== 'none');
+  /* ── Events on call cards ────────────────────────────────────── */
+  /* Toggle card open/close */
+  $(document).on('click','.ac-call-header',function(e){
+    if($(e.target).is('button,input,select,textarea')) return;
+    var $card=$(this).closest('.ac-call-card');
+    var $body=$card.find('.ac-call-body');
+    var $chev=$card.find('.ac-call-chevron');
+    $body.toggleClass('ac-collapsed');
+    $chev.css('transform',$body.hasClass('ac-collapsed')?'rotate(-90deg)':'rotate(0deg)');
   });
 
-  // ---- Step 3: Test call ----
-  $('#btn-run-test').on('click', function() {
-    collectCurrentStep();
-    if (!state.calls.length || !state.calls[0].url) {
-      $('#test-status').text('Configura prima URL e metodo nello Step 2.').css('color','#c62828');
-      return;
+  /* Method change → update badge */
+  $(document).on('change','.ac-call-method',function(){
+    var m=$(this).val();
+    var $badge=$(this).closest('.ac-call-card').find('.ac-call-method-badge');
+    $badge.attr('class','ac-method-badge ac-method-'+m+' ac-call-method-badge').text(m);
+  });
+
+  /* Auth override change → show/hide cred + apikey rows */
+  $(document).on('change','.ac-call-auth-type',function(){
+    var v=$(this).val();
+    var $card=$(this).closest('.ac-call-card');
+    var id=$card.data('call-id');
+    $card.find('.ac-call-cred-row').toggle(v!=='inherited'&&v!=='none');
+    $card.find('.ac-call-apikey-row').toggle(v==='api_key_header'||v==='api_key_query');
+    var $tag=$card.find('.ac-call-auth-display');
+    if(v==='inherited'){$tag.attr('class','ac-auth-tag ac-call-auth-display').text('inherited');}
+    else{$tag.attr('class','ac-auth-tag ac-auth-tag--override ac-call-auth-display').text(v);}
+    if(v!=='inherited'&&v!=='none') loadCredentials('#ac-call-cred-'+id);
+  });
+
+  /* Remove call */
+  $(document).on('click','.ac-remove-call-btn',function(e){
+    e.stopPropagation();
+    var id=$(this).data('call-id');
+    if($('.ac-call-card').length<=1){alert('Deve esserci almeno una chiamata.');return;}
+    state.calls=state.calls.filter(function(c){return c.id!==id;});
+    var $card=$('.ac-call-card[data-call-id="'+id+'"]');
+    var $conn=$('#ac-connector-before-'+id);
+    $conn.remove(); $card.remove();
+    updateAllConnectors();
+  });
+
+  /* Add call */
+  $('#btn-add-call').on('click',function(){ addCallToChain(); updateAllConnectors(); });
+
+  /* ── Run single call ─────────────────────────────────────────── */
+  $(document).on('click','.ac-run-call-btn',function(e){
+    e.stopPropagation();
+    var id=$(this).data('call-id');
+    runCall(id);
+  });
+
+  function runCall(callId){
+    collectChainState();
+    var callObj=state.calls.filter(function(c){return c.id===callId;})[0];
+    if(!callObj||!callObj.url){
+      alert('Inserisci prima un URL per questa chiamata.'); return;
     }
+    /* Determine auth */
+    var authType=callObj.auth_type==='inherited'?state.auth_type:callObj.auth_type;
+    var credRealm=callObj.auth_type==='inherited'?state.credential_realm:callObj.credential_realm;
 
-    var $btn = $(this);
-    $btn.prop('disabled', true).find('i').addClass('ac-spin');
-    $('#test-status').text('Esecuzione in corso...').css('color','#8b959e');
-    $('#test-response-wrap').hide();
+    /* Set running state */
+    $('#ac-dot-'+callId).attr('class','ac-status-dot ac-status-dot--running');
+    $('#ac-lat-'+callId).text('…').attr('class','ac-call-latency');
+    var $card=$('.ac-call-card[data-call-id="'+callId+'"]');
+    $card.attr('class','ac-call-card ac-call--running');
+    $('#ac-resp-code-'+callId).attr('class','ac-badge ac-badge--none').text('…');
+    $('#ac-resp-placeholder-'+callId).show();
+    $('#ac-resp-raw-'+callId).hide();
 
-    var payload = {
-      auth_type: state.auth_type,
-      credential_realm: state.credential_realm,
-      token_url: state.token_url,
-      apikey_param: state.apikey_param,
-      calls: JSON.stringify(state.calls)
+    var payload={
+      auth_type:authType,
+      credential_realm:credRealm,
+      token_url:state.token_url,
+      apikey_param:callObj.apikey_param||state.apikey_param,
+      calls:JSON.stringify([callObj])
     };
 
-    service.post('/servicesNS/nobody/api_connect/api_connect_test', payload, function(err, resp) {
-      $btn.prop('disabled', false).find('i').removeClass('ac-spin');
-      if (err) {
-        $('#test-status').text('Errore: ' + err.message).css('color','#c62828');
+    service.post('/servicesNS/nobody/api_connect/api_connect_test',payload,function(err,resp){
+      if(err){
+        setCallError(callId,'Errore: '+err.message);
         return;
       }
+      var r=resp.data||{};
+      var code=r.status_code||0;
+      var body=r.body||'';
+      var latency=r.latency_ms?r.latency_ms+' ms':'—';
+      callResponses[callId]={code:code,body:body,latency:latency,content_type:r.content_type||''};
 
-      var result = resp.data || {};
-      var httpCode = result.status_code || '—';
-      var latency = result.latency_ms ? result.latency_ms + ' ms' : '—';
-      var ctype = result.content_type || '';
-      var body = result.body || '';
+      /* UI update */
+      var codeCls=code>=200&&code<300?'ac-badge--2xx':code>=400&&code<500?'ac-badge--4xx':'ac-badge--5xx';
+      $('#ac-resp-code-'+callId).attr('class','ac-badge '+codeCls).text('HTTP '+code);
+      $('#ac-lat-'+callId).text(latency);
+      $('#ac-resp-placeholder-'+callId).hide();
 
-      // HTTP code badge
-      var codeCls = httpCode >= 200 && httpCode < 300 ? 'ac-badge--2xx' : httpCode >= 400 && httpCode < 500 ? 'ac-badge--4xx' : 'ac-badge--5xx';
-      $('#test-http-code').attr('class', 'ac-badge ' + codeCls).text('HTTP ' + httpCode);
-      $('#test-latency').text(latency);
-      $('#test-content-type').text(ctype);
+      /* Raw */
+      $('#ac-resp-raw-'+callId).text(body).show();
 
-      $('#test-status').text('Completato').css('color','#2e7d32');
-
-      // Raw
-      $('#test-raw-output').text(body);
-
-      // Pretty (JSON)
-      try {
-        testResponseData = JSON.parse(body);
-        $('#test-pretty-output').text(JSON.stringify(testResponseData, null, 2));
-      } catch(e) {
-        testResponseData = body;
-        $('#test-pretty-output').text(body);
+      /* Tree */
+      var treeHtml='';
+      try{
+        var parsed=JSON.parse(body);
+        treeHtml=renderJsonTreeSelectable(parsed,'$',callId);
+        callResponses[callId].parsed=parsed;
+      } catch(ex){
+        treeHtml='<span style="color:var(--text-muted-color,#8b959e);font-style:italic">Risposta non JSON</span>';
       }
+      $('#ac-resp-tree-'+callId).html(treeHtml);
 
-      // Tree
-      if (typeof testResponseData === 'object') {
-        $('#test-tree-output').html(renderJsonTree(testResponseData, '', false));
+      /* Vars */
+      var vars=extractVarsFromResponse(callResponses[callId].parsed||null,body);
+      callVars[callId]=vars;
+      renderVarsPanel(callId,vars);
+
+      /* Update connectors delle call successive */
+      updateConnectorAfter(callId,vars);
+
+      /* Card state */
+      if(code>=200&&code<300){
+        $('#ac-dot-'+callId).attr('class','ac-status-dot ac-status-dot--ok');
+        $card.attr('class','ac-call-card ac-call--ok');
+        $('#ac-lat-'+callId).attr('class','ac-call-latency');
       } else {
-        $('#test-tree-output').text('Risposta non JSON — usa tab Raw.');
+        setCallError(callId,'HTTP '+code);
       }
-
-      $('#test-response-wrap').show();
     });
-  });
-
-  // Tab switching
-  $(document).on('click', '.ac-tab', function() {
-    var target = $(this).data('target');
-    $(this).siblings().removeClass('active');
-    $(this).addClass('active');
-    $('.ac-tab-panel').removeClass('active');
-    $('#' + target).addClass('active');
-  });
-
-  // ---- JSON Tree renderer ----
-  function renderJsonTree(data, path, selectable) {
-    var cls = selectable ? 'ac-json-tree--selectable' : '';
-    return '<div class="' + cls + '">' + renderNode(data, path || '$', selectable) + '</div>';
   }
 
-  function renderNode(val, path, selectable) {
-    if (val === null) return spanNull('null');
-    if (typeof val === 'boolean') return spanBool(String(val));
-    if (typeof val === 'number') return spanNum(String(val));
-    if (typeof val === 'string') {
-      if (!selectable) return spanStr('"' + escHtml(val) + '"');
-      return '<span class="jt-leaf" data-path="' + escHtml(path) + '" title="' + escHtml(path) + '">' +
-             '<span class="jt-str">"' + escHtml(val.length > 60 ? val.substring(0,60)+'...' : val) + '"</span></span>';
+  function setCallError(callId,msg){
+    $('#ac-dot-'+callId).attr('class','ac-status-dot ac-status-dot--error');
+    $('#ac-lat-'+callId).text(msg).attr('class','ac-call-latency ac-call-latency--error');
+    $('.ac-call-card[data-call-id="'+callId+'"]').attr('class','ac-call-card ac-call--error');
+  }
+
+  /* ── JSON Tree (selectable for parsing step) ─────────────────── */
+  function renderJsonTreeSelectable(val,path,callId){
+    return renderNode(val,path,true,callId);
+  }
+
+  function renderNode(val,path,selectable,callId){
+    if(val===null) return '<span class="jt-null">null</span>';
+    if(typeof val==='boolean') return '<span class="jt-bool">'+val+'</span>';
+    if(typeof val==='number')  return '<span class="jt-num">'+val+'</span>';
+    if(typeof val==='string'){
+      var s=esc(val.length>80?val.substring(0,80)+'…':val);
+      if(!selectable) return '<span class="jt-str">"'+s+'"</span>';
+      return '<span class="jt-leaf" data-path="'+esc(path)+'" data-call-id="'+callId+'"><span class="jt-str">"'+s+'"</span></span>';
     }
-    if (Array.isArray(val)) {
-      if (val.length === 0) return '<span class="jt-punct">[]</span>';
-      var items = val.slice(0,10).map(function(v, i) {
-        return '<div style="padding-left:16px">' + renderNode(v, path+'['+i+']', selectable) + '</div>';
+    if(Array.isArray(val)){
+      if(!val.length) return '<span>[]</span>';
+      var items=val.slice(0,8).map(function(v,i){
+        return '<div style="padding-left:14px">'+renderNode(v,path+'['+i+']',selectable,callId)+'</div>';
       }).join('');
-      if (val.length > 10) items += '<div style="padding-left:16px;color:#8b959e;font-style:italic">... (' + (val.length-10) + ' altri) ...</div>';
-      return '<span class="jt-collapse" title="' + escHtml(path) + '">[</span>' + items + '<span>]</span>';
+      if(val.length>8) items+='<div style="padding-left:14px;color:var(--text-muted-color,#8b959e);font-style:italic">…('+val.length+' elementi)</div>';
+      return '<span>[</span>'+items+'<span>]</span>';
     }
-    if (typeof val === 'object') {
-      var keys = Object.keys(val);
-      if (keys.length === 0) return '<span class="jt-punct">{}</span>';
-      var pairs = keys.slice(0,50).map(function(k) {
-        var childPath = path + '.' + k;
-        var keySpan = '<span class="jt-key">"' + escHtml(k) + '"</span>: ';
-        var childVal = val[k];
-        if (selectable && (typeof childVal === 'string' || typeof childVal === 'number' || typeof childVal === 'boolean')) {
-          return '<div style="padding-left:16px"><span class="jt-leaf" data-path="' + escHtml(childPath) + '" title="' + escHtml(childPath) + '">' + keySpan + renderNode(childVal, childPath, false) + '</span></div>';
+    if(typeof val==='object'){
+      var keys=Object.keys(val);
+      if(!keys.length) return '<span>{}</span>';
+      var pairs=keys.slice(0,40).map(function(k){
+        var cp=path+'.'+k;
+        var keySpan='<span class="jt-key">"'+esc(k)+'"</span>: ';
+        var child=val[k];
+        if(selectable&&(typeof child==='string'||typeof child==='number'||typeof child==='boolean')){
+          return '<div style="padding-left:14px"><span class="jt-leaf" data-path="'+esc(cp)+'" data-call-id="'+callId+'">'+keySpan+renderNode(child,cp,false,callId)+'</span></div>';
         }
-        return '<div style="padding-left:16px">' + keySpan + renderNode(childVal, childPath, selectable) + '</div>';
+        return '<div style="padding-left:14px">'+keySpan+renderNode(child,cp,selectable,callId)+'</div>';
       }).join('');
-      if (keys.length > 50) pairs += '<div style="padding-left:16px;color:#8b959e;font-style:italic">... (' + (keys.length-50) + ' altri campi) ...</div>';
-      return '<span class="jt-collapse">{</span>' + pairs + '<span>}</span>';
+      if(keys.length>40) pairs+='<div style="padding-left:14px;color:var(--text-muted-color,#8b959e);font-style:italic">…('+keys.length+' campi)</div>';
+      return '<span>{</span>'+pairs+'<span>}</span>';
     }
-    return escHtml(String(val));
+    return esc(String(val));
   }
 
-  function spanStr(s) { return '<span class="jt-str">' + s + '</span>'; }
-  function spanNum(s) { return '<span class="jt-num">' + s + '</span>'; }
-  function spanBool(s) { return '<span class="jt-bool">' + s + '</span>'; }
-  function spanNull(s) { return '<span class="jt-null">' + s + '</span>'; }
+  /* Click leaf in tree → insert {{var}} into focused URL/body input */
+  $(document).on('click','.ac-resp-tree .jt-leaf',function(){
+    var path=$(this).data('path');
+    $(this).toggleClass('selected');
+    /* Offer to add to parsing fields */
+    addFieldToParsingIfNotExists(path,'');
+  });
 
-  // ---- Step 4: Parsing ----
-  function renderParsingTree() {
-    var $tree = $('#parsing-tree');
-    if (!testResponseData) {
-      $tree.html('<p class="ac-hint">Esegui prima il test (Step 3) per visualizzare il tree.</p>');
+  /* ── Variables extraction ────────────────────────────────────── */
+  function extractVarsFromResponse(parsed,rawBody){
+    var vars=[];
+    if(!parsed) return vars;
+    function walk(obj,prefix){
+      if(typeof obj==='object'&&obj!==null&&!Array.isArray(obj)){
+        Object.keys(obj).forEach(function(k){
+          var p=prefix?prefix+'.'+k:k;
+          if(typeof obj[k]==='string'||typeof obj[k]==='number'||typeof obj[k]==='boolean'){
+            vars.push({path:p,sample:String(obj[k]).substring(0,30)});
+          } else {
+            walk(obj[k],p);
+          }
+        });
+      } else if(Array.isArray(obj)&&obj.length>0){
+        walk(obj[0],prefix+'[*]');
+      }
+    }
+    var root=parsed;
+    /* Unwrap common array roots */
+    if(typeof parsed==='object'&&!Array.isArray(parsed)){
+      var keys=Object.keys(parsed);
+      keys.forEach(function(k){if(Array.isArray(parsed[k])&&parsed[k].length>0){walk(parsed[k][0],k+'[*]');}});
+    }
+    walk(parsed,'');
+    return vars.slice(0,30);
+  }
+
+  function renderVarsPanel(callId,vars){
+    var $panel=$('#ac-resp-vars-'+callId).empty();
+    if(!vars.length){
+      $panel.html('<span style="font-size:12px;color:var(--text-muted-color,#8b959e);font-style:italic">Nessuna variabile estratta</span>');
       return;
     }
-    $tree.html(renderJsonTree(testResponseData, '$', true));
+    var chips=vars.map(function(v){
+      return '<span class="ac-var-chip" data-var="{{'+v.path+'}}" title="Campione: '+esc(v.sample)+'" style="margin:2px 3px;cursor:pointer">{{'+esc(v.path)+'}}</span>';
+    }).join('');
+    $panel.html('<div style="margin-bottom:6px;font-size:11px;color:var(--text-muted-color,#8b959e)">Clicca un chip per copiarlo nell\'input focalizzato</div><div>'+chips+'</div>');
   }
 
-  // Click on leaf to add field
-  $(document).on('click', '#parsing-tree .jt-leaf', function() {
-    var path = $(this).data('path');
-    $(this).toggleClass('selected');
-    if ($(this).hasClass('selected')) {
-      addFieldRow(path, '');
-    } else {
-      // Remove field row with same path
-      $('.ac-field-row').filter(function() {
-        return $(this).find('.field-path').val() === path;
-      }).remove();
+  /* Click var chip → paste into last focused input */
+  var lastFocused=null;
+  $(document).on('focus','input,textarea',function(){ lastFocused=$(this); });
+  $(document).on('click','.ac-var-chip',function(){
+    var v=$(this).data('var');
+    if(lastFocused&&lastFocused.length){
+      var el=lastFocused[0];
+      var start=el.selectionStart,end=el.selectionEnd;
+      var val=lastFocused.val();
+      lastFocused.val(val.substring(0,start)+v+val.substring(end));
+      el.setSelectionRange(start+v.length,start+v.length);
+      lastFocused.focus();
     }
   });
 
-  $('#btn-add-field').on('click', function() {
-    addFieldRow('', '');
+  /* ── Connectors ──────────────────────────────────────────────── */
+  function updateConnectorAfter(callId,vars){
+    /* Find the next call in DOM order */
+    var $cards=$('.ac-call-card');
+    var found=false;
+    $cards.each(function(){
+      if(found){
+        var nextId=$(this).data('call-id');
+        var $chips=$('#ac-connector-vars-'+nextId);
+        if($chips.length){
+          if(!vars||!vars.length){
+            $chips.html('<span style="font-size:11px;color:var(--text-muted-color,#8b959e);font-style:italic">Nessuna variabile disponibile</span>');
+          } else {
+            var chips=vars.map(function(v){
+              return '<span class="ac-var-chip" data-var="{{'+v.path+'}}" title="Campione: '+esc(v.sample)+'">{{'+esc(v.path)+'}}</span>';
+            }).join('');
+            $chips.html(chips);
+          }
+        }
+        found=false;
+      }
+      if($(this).data('call-id')===callId) found=true;
+    });
+  }
+
+  function updateAllConnectors(){
+    /* Ensure connector IDs match current card order */
+    var $cards=$('.ac-call-card');
+    $cards.each(function(i){
+      var id=$(this).data('call-id');
+      var $conn=$('#ac-connector-before-'+id);
+      if(i===0&&$conn.length) $conn.remove();
+      if(i>0&&!$conn.length){
+        $(this).before(buildConnectorHtml(id));
+      }
+    });
+  }
+
+  function showRespPlaceholder(callId){
+    $('#ac-resp-placeholder-'+callId).show();
+    $('#ac-resp-raw-'+callId).hide();
+  }
+
+  /* ── Response tab switching ──────────────────────────────────── */
+  $(document).on('click','.ac-resp-tab',function(){
+    var callId=$(this).data('call-id');
+    var tab=$(this).data('tab');
+    $(this).siblings().removeClass('active');
+    $(this).addClass('active');
+    var $card=$('.ac-call-card[data-call-id="'+callId+'"]');
+    $card.find('.ac-resp-panel').removeClass('active');
+    $card.find('#ac-rtab-'+tab+'-'+callId).addClass('active');
   });
 
-  function addFieldRow(path, alias) {
-    // Avoid duplicates
-    var exists = false;
-    $('.field-path').each(function() { if ($(this).val() === path && path) exists = true; });
-    if (exists) return;
+  /* ── Step 3: no-op (test is in step 2 per-card) ─────────────── */
+  /* Step 3 shows a merged view of all call responses */
+  function renderParsingTab(){
+    /* Populate the parsing tree with response from first call that returned data */
+    var ids=Object.keys(callResponses);
+    if(!ids.length){
+      $('#parsing-tree').html('<p class="ac-hint">Esegui almeno una chiamata nello Step 2 per visualizzare il tree.</p>');
+      return;
+    }
+    var resp=callResponses[ids[0]];
+    try{
+      var parsed=resp.parsed||JSON.parse(resp.body||'{}');
+      $('#parsing-tree').html(renderNode(parsed,'$',true,'p'));
+    } catch(e){
+      $('#parsing-tree').html('<p class="ac-hint">Risposta non JSON — usa il parsing manuale.</p>');
+    }
+  }
 
-    var $row = $([
-      '<div class="ac-field-row">',
-        '<input type="text" class="input-medium field-path ac-field-path" value="' + escHtml(path) + '" placeholder="$.campo oppure regex"/>',
-        '<span style="color:#8b959e;flex-shrink:0">→</span>',
-        '<input type="text" class="input-medium field-alias" value="' + escHtml(alias) + '" placeholder="alias (opzionale)"/>',
-        '<button class="btn btn-default btn-sm ac-btn-remove-field" type="button"><i class="icon-trash"></i></button>',
-      '</div>'
-    ].join(''));
+  /* ── Parsing step leaf click ─────────────────────────────────── */
+  $(document).on('click','#parsing-tree .jt-leaf',function(){
+    var path=$(this).data('path');
+    $(this).toggleClass('selected');
+    if($(this).hasClass('selected')) addFieldToParsingIfNotExists(path,'');
+    else $('.ac-field-row').filter(function(){return $(this).find('.field-path').val()===path;}).remove();
+  });
+
+  $('#btn-add-field').on('click',function(){ addFieldToParsingIfNotExists('',''); });
+
+  function addFieldToParsingIfNotExists(path,alias){
+    var exists=false;
+    $('.field-path').each(function(){if($(this).val()===path&&path)exists=true;});
+    if(exists) return;
+    var $row=$('<div class="ac-field-row">'+
+      '<input type="text" class="input-medium field-path ac-field-path" value="'+esc(path)+'" placeholder="$.campo o regex"/>'+
+      '<span style="color:var(--text-muted-color,#8b959e);flex-shrink:0">→</span>'+
+      '<input type="text" class="input-medium field-alias" value="'+esc(alias)+'" placeholder="alias"/>'+
+      '<button class="btn btn-default btn-sm ac-btn-remove-field" type="button"><i class="icon-trash"></i></button>'+
+    '</div>');
     $('#ac-fields-list').append($row);
   }
 
-  $(document).on('click', '.ac-btn-remove-field', function() {
-    $(this).closest('.ac-field-row').remove();
-  });
-
-  // ---- Step 5: Tracciato ----
-  function renderTracciato() {
-    var fields = state.extracted_fields;
-    var fieldOptions = '<option value="">— non mappato —</option>' +
-      fields.map(function(f) {
-        var lbl = f.alias || f.path;
-        return '<option value="' + escHtml(f.path) + '">' + escHtml(lbl) + '</option>';
-      }).join('') +
-      '<option value="__static__">valore statico...</option>';
-
-    var rows = TRACCIATO_FIELDS.map(function(tf) {
-      var sel = state.field_mapping[tf.key] || '';
-      return [
-        '<div class="ac-tracciato-row">',
-          '<label class="ac-tracciato-label">' + tf.label + (tf.required ? '<span class="ac-required">*</span>' : '') + '</label>',
-          '<select id="map-' + tf.key + '" class="input-xlarge ac-map-select">',
-            fieldOptions,
-          '</select>',
-          '<div class="ac-tracciato-hint">' + tf.hint + '</div>',
-        '</div>'
-      ].join('');
-    }).join('');
-
-    $('#ac-tracciato-grid').html(rows);
-
-    // Restore selections
-    TRACCIATO_FIELDS.forEach(function(tf) {
-      if (state.field_mapping[tf.key]) {
-        $('#map-' + tf.key).val(state.field_mapping[tf.key]);
-      }
+  function collectExtractedFields(){
+    var f=[];
+    $('.ac-field-row').each(function(){
+      var p=$(this).find('.field-path').val().trim();
+      var a=$(this).find('.field-alias').val().trim();
+      if(p) f.push({path:p,alias:a||p.split('.').pop()});
     });
+    return f;
   }
 
-  // ---- Step 6: Load indexes ----
-  function loadIndexes() {
-    service.get('/servicesNS/-/-/data/indexes', { count: 100, output_mode: 'json' }, function(err, resp) {
-      if (err) return;
-      var $sel = $('#f-index').empty().append('<option value="">— Seleziona index —</option>');
-      var entries = (resp.data && resp.data.entry) ? resp.data.entry : [];
-      entries.filter(function(e){ return !e.name.startsWith('_'); })
-        .forEach(function(e) {
-          $sel.append('<option value="' + escHtml(e.name) + '">' + escHtml(e.name) + '</option>');
-        });
-      if (state.index) $sel.val(state.index);
-    });
-  }
+  $(document).on('click','.ac-btn-remove-field',function(){$(this).closest('.ac-field-row').remove();});
 
-  $('#f-checkpoint').on('change', function() {
-    $('#checkpoint-detail').toggle($(this).is(':checked'));
-  });
-
-  // ---- Step 7: Summary ----
-  function renderSummary() {
-    collectCurrentStep();
-    var kv = [
-      ['Nome input', state.name || '—'],
-      ['Auth', state.auth_type || '—'],
-      ['Credenziale', state.credential_realm || '—'],
-      ['Endpoint URL', (state.calls[0] || {}).url || '—'],
-      ['Metodo', (state.calls[0] || {}).method || '—'],
-      ['Chiamate cascata', state.calls.length],
-      ['Paginazione', state.pagination_type],
-      ['Schedule', state.schedule || '—'],
-      ['Formato risposta', state.response_format],
-      ['Campi estratti', state.extracted_fields.length],
-      ['Campi tracciato mappati', Object.values(state.field_mapping).filter(Boolean).length + ' / ' + TRACCIATO_FIELDS.length],
-      ['Index', state.index || '—'],
-      ['Sourcetype', state.sourcetype || '—'],
-      ['Source', state.source || '—'],
-      ['Logger source', state.logger_source || '—'],
-    ];
-    var html = '<div class="ac-summary-kv">' +
-      kv.map(function(p) {
-        return '<span class="ac-summary-key">' + escHtml(p[0]) + '</span><span class="ac-summary-val">' + escHtml(String(p[1])) + '</span>';
-      }).join('') +
+  /* ── Tracciato ───────────────────────────────────────────────── */
+  function renderTracciato(){
+    var fields=state.extracted_fields;
+    var opts='<option value="">— non mappato —</option>'+
+      fields.map(function(f){
+        var l=f.alias||f.path;
+        return '<option value="'+esc(f.path)+'">'+esc(l)+'</option>';
+      }).join('')+
+      '<option value="__static__">valore statico…</option>';
+    var rows=TRACCIATO_FIELDS.map(function(tf){
+      return '<div class="ac-tracciato-row">'+
+        '<label class="ac-tracciato-label">'+tf.label+(tf.required?'<span class="ac-required">*</span>':'')+'</label>'+
+        '<select id="map-'+tf.key+'" class="input-xlarge">'+opts+'</select>'+
+        '<div class="ac-tracciato-hint">'+tf.hint+'</div>'+
       '</div>';
-    $('#ac-summary-content').html(html);
+    }).join('');
+    $('#ac-tracciato-grid').html(rows);
+    TRACCIATO_FIELDS.forEach(function(tf){
+      if(state.field_mapping[tf.key]) $('#map-'+tf.key).val(state.field_mapping[tf.key]);
+    });
   }
 
-  // ---- Generate ----
-  $('#btn-generate').on('click', function() {
-    collectCurrentStep();
-
-    // Validation
-    var errors = [];
-    if (!state.name) errors.push('Nome input mancante (Step 1)');
-    if (!state.auth_type) errors.push('Tipo autenticazione non selezionato (Step 1)');
-    if (!state.calls.length || !state.calls[0].url) errors.push('URL endpoint mancante (Step 2)');
-    if (!state.schedule) errors.push('Schedule (cron) mancante (Step 2)');
-    if (!state.index) errors.push('Index di destinazione mancante (Step 6)');
-    if (!state.sourcetype) errors.push('Sourcetype mancante (Step 6)');
-    if (!state.source) errors.push('Source mancante (Step 6)');
-    if (!state.logger_source) errors.push('Logger source mancante (Step 7)');
-    // Required tracciato
-    TRACCIATO_FIELDS.filter(function(tf){ return tf.required; }).forEach(function(tf) {
-      if (!state.field_mapping[tf.key]) errors.push('Campo obbligatorio tracciato non mappato: ' + tf.label);
+  function collectTracciato(){
+    TRACCIATO_FIELDS.forEach(function(tf){
+      state.field_mapping[tf.key]=$('#map-'+tf.key).val().trim();
     });
+  }
 
-    if (errors.length) {
-      alert('Errori di validazione:\n• ' + errors.join('\n• '));
-      return;
-    }
+  /* ── Step 6: indexes ─────────────────────────────────────────── */
+  function loadIndexes(){
+    service.get('/servicesNS/-/-/data/indexes',{count:100,output_mode:'json'},function(err,resp){
+      if(err) return;
+      var $s=$('#f-index').empty().append('<option value="">— Seleziona index —</option>');
+      ((resp.data&&resp.data.entry)||[]).filter(function(e){return !e.name.startsWith('_');})
+        .forEach(function(e){ $s.append('<option value="'+esc(e.name)+'">'+esc(e.name)+'</option>'); });
+      if(state.index) $s.val(state.index);
+    });
+  }
 
+  $('#f-checkpoint').on('change',function(){$('#checkpoint-detail').toggle($(this).is(':checked'));});
+  $('#f-pagination').on('change',function(){$('#pagination-details').toggle($(this).val()!=='none');});
+  $('#f-schedule').on('input',function(){$('#cron-preview').text(cronHuman($(this).val().trim()));});
+
+  /* ── Summary ─────────────────────────────────────────────────── */
+  function renderSummary(){
+    collectCurrentStep();
+    var kv=[
+      ['Nome input',state.name||'—'],['Auth globale',state.auth_type||'—'],
+      ['Call configurate',state.calls.length],
+      ['Call con auth override',state.calls.filter(function(c){return c.auth_type!=='inherited';}).length],
+      ['Paginazione',state.pagination_type],['Schedule',state.schedule||'—'],
+      ['Formato risposta',state.response_format],
+      ['Campi estratti',state.extracted_fields.length],
+      ['Tracciato mappato',Object.values(state.field_mapping).filter(Boolean).length+' / '+TRACCIATO_FIELDS.length],
+      ['Index',state.index||'—'],['Sourcetype',state.sourcetype||'—'],
+      ['Logger source',state.logger_source||'—']
+    ];
+    $('#ac-summary-content').html('<div class="ac-summary-kv">'+
+      kv.map(function(p){return '<span class="ac-summary-key">'+esc(p[0])+'</span><span class="ac-summary-val">'+esc(String(p[1]))+'</span>';}).join('')+
+    '</div>');
+  }
+
+  /* ── Generate ────────────────────────────────────────────────── */
+  $('#btn-generate').on('click',function(){
+    collectCurrentStep();
+    var errors=[];
+    if(!state.name) errors.push('Nome input mancante (Step 1)');
+    if(!state.calls.length||!state.calls[0].url) errors.push('URL endpoint mancante (Step 2)');
+    if(!state.schedule) errors.push('Schedule mancante (Step 2)');
+    if(!state.index) errors.push('Index mancante (Step 6)');
+    if(!state.sourcetype) errors.push('Sourcetype mancante (Step 6)');
+    if(!state.source) errors.push('Source mancante (Step 6)');
+    if(!state.logger_source) errors.push('Logger source mancante (Step 7)');
+    TRACCIATO_FIELDS.filter(function(tf){return tf.required;}).forEach(function(tf){
+      if(!state.field_mapping[tf.key]) errors.push('Campo obbligatorio non mappato: '+tf.label);
+    });
+    if(errors.length){alert('Errori:\n• '+errors.join('\n• '));return;}
     $('#ac-gen-modal').show();
-    $('#gen-modal-title').text('Generazione in corso...');
-    $('#gen-modal-body').html('<div class="ac-spinner"><i class="icon-rotate-right"></i> Generazione script e configurazione...</div>');
+    $('#gen-modal-title').text('Generazione in corso…');
+    $('#gen-modal-body').html('<div class="ac-spinner"><i class="icon-rotate-right"></i> Generazione script…</div>');
     $('#gen-modal-footer').hide();
-
-    var payload = { config: JSON.stringify(state) };
-    if (editKey) payload._key = editKey;
-
-    service.post('/servicesNS/nobody/api_connect/api_connect_generate', payload, function(err, resp) {
-      if (err) {
-        $('#gen-modal-title').text('Errore generazione');
-        $('#gen-modal-body').html('<p style="color:#c62828">' + escHtml(err.message) + '</p>');
-        $('#gen-modal-footer').show().find('#btn-view-script').hide();
-        return;
-      }
-
-      var r = resp.data || {};
+    service.post('/servicesNS/nobody/api_connect/api_connect_generate',{config:JSON.stringify(state)},function(err,resp){
+      if(err){$('#gen-modal-title').text('Errore');$('#gen-modal-body').html('<p style="color:#c62828">'+esc(err.message)+'</p>');$('#gen-modal-footer').show();return;}
+      var r=resp.data||{};
       $('#gen-modal-title').text('Input generato con successo!');
-      $('#gen-modal-body').html([
-        '<div class="ac-summary-box">',
-          '<div class="ac-summary-kv">',
-            '<span class="ac-summary-key">Script</span><span class="ac-summary-val">' + escHtml(r.script_path || '—') + '</span>',
-            '<span class="ac-summary-key">inputs.conf</span><span class="ac-summary-val">' + escHtml(r.stanza || '—') + '</span>',
-          '</div>',
-        '</div>',
-        r.script_preview ? '<pre class="ac-code-block" style="margin-top:12px;max-height:300px">' + escHtml(r.script_preview) + '</pre>' : ''
-      ].join(''));
+      $('#gen-modal-body').html(
+        '<div class="ac-summary-box"><div class="ac-summary-kv">'+
+        '<span class="ac-summary-key">Script</span><span class="ac-summary-val">'+esc(r.script_path||'—')+'</span>'+
+        '<span class="ac-summary-key">Stanza</span><span class="ac-summary-val">'+esc(r.stanza||'—')+'</span>'+
+        '</div></div>'+
+        (r.script_preview?'<pre class="ac-code-block" style="margin-top:12px">'+esc(r.script_preview)+'</pre>':'')
+      );
       $('#gen-modal-footer').show();
     });
   });
 
-  $('#btn-view-script').on('click', function() {
-    // Already shown in modal body
-  });
-
-  // ---- Save draft ----
-  $('#btn-save-draft').on('click', function() {
+  $('#btn-save-draft').on('click',function(){
     collectCurrentStep();
-    var payload = JSON.stringify(state);
-    try { localStorage.setItem('ac_draft_' + (state.name || 'draft'), payload); } catch(e) {}
-    // Also save to KV Store as draft
-    service.post('/servicesNS/nobody/api_connect/storage/collections/data/api_connect_inputs', {
-      name: state.name || '__draft__',
-      config: payload,
-      last_status: 'DRAFT'
-    }, function() {});
+    service.post('/servicesNS/nobody/api_connect/storage/collections/data/api_connect_inputs',
+      {name:state.name||'__draft__',config:JSON.stringify(state),last_status:'DRAFT'},function(){});
     alert('Bozza salvata.');
   });
 
-  // ---- Prev / Next ----
-  $('#btn-prev').on('click', function() { goToStep(currentStep - 1); });
-  $('#btn-next').on('click', function() { goToStep(currentStep + 1); });
+  $('#btn-prev').on('click',function(){goToStep(currentStep-1);});
+  $('#btn-next').on('click',function(){goToStep(currentStep+1);});
 
-  // ---- Check for edit mode ----
-  var urlParams = new URLSearchParams(window.location.search);
-  editKey = urlParams.get('edit');
-  if (editKey) {
-    service.get('/servicesNS/nobody/api_connect/storage/collections/data/api_connect_inputs/' + editKey, {}, function(err, resp) {
-      if (err || !resp.data) return;
-      try {
-        var saved = JSON.parse(resp.data.config || '{}');
-        $.extend(state, saved);
-        populateStep1();
-      } catch(e) {}
+  /* ── Edit mode ───────────────────────────────────────────────── */
+  var urlParams=new URLSearchParams(window.location.search);
+  editKey=urlParams.get('edit');
+  if(editKey){
+    service.get('/servicesNS/nobody/api_connect/storage/collections/data/api_connect_inputs/'+editKey,{},function(err,resp){
+      if(err||!resp.data) return;
+      try{$.extend(state,JSON.parse(resp.data.config||'{}'));populateStep1();}catch(e){}
     });
   }
 
-  function populateStep1() {
+  function populateStep1(){
     $('#f-name').val(state.name);
     $('#f-auth-type').val(state.auth_type).trigger('change');
     $('#f-schedule').val(state.schedule);
     $('#cron-preview').text(cronHuman(state.schedule));
   }
 
-  // ---- Init ----
-  addCallCard(); // first call card
+  /* ── Init ────────────────────────────────────────────────────── */
   renderStep();
 });

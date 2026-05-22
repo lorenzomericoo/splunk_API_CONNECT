@@ -2,1294 +2,788 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>API Connect for Splunk — Demo</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>API Connect for Splunk v2 — Demo</title>
 <style>
-/* ============================================================
-   Splunk Enterprise visual language replica per demo standalone
-   ============================================================ */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f2f4f5;--sidebar:#1a1f2b;--white:#fff;
+  --border:#c3cbd4;--border-lt:#e4e8eb;
+  --text:#1a1f2b;--muted:#6b7785;
+  --primary:#4a90d9;--primary-d:#2f6fa8;
+  --success:#3fa142;--error:#c0392b;--warn:#e67e22;
+  --th:#f7f8f9;--code:#f4f6f8;
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+  --mono:"SF Mono","Fira Code",Consolas,monospace;
+  --radius:4px;
+}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;font-size:13px}
 
-:root {
-  --splunk-bg:        #f2f4f5;
-  --splunk-sidebar:   #1a1f2b;
-  --splunk-topbar:    #ffffff;
-  --splunk-border:    #c3cbd4;
-  --splunk-border-lt: #e4e8eb;
-  --splunk-text:      #1a1f2b;
-  --splunk-muted:     #6b7785;
-  --splunk-primary:   #4a90d9;
-  --splunk-primary-d: #2f6fa8;
-  --splunk-success:   #3fa142;
-  --splunk-error:     #c0392b;
-  --splunk-warn:      #e67e22;
-  --splunk-white:     #ffffff;
-  --splunk-th-bg:     #f7f8f9;
-  --splunk-code-bg:   #f4f6f8;
-  --splunk-card-sh:   0 1px 4px rgba(0,0,0,.10);
-  --splunk-panel-sh:  0 2px 8px rgba(0,0,0,.08);
-  --radius:           4px;
-  --font:             "Splunk Platform Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  --font-mono:        "SF Mono", "Fira Code", Consolas, monospace;
-}
+/* topbar */
+.topbar{height:48px;background:var(--sidebar);display:flex;align-items:center;padding:0 16px;gap:20px;position:sticky;top:0;z-index:200;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.topbar-logo{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#fff;text-decoration:none}
+.topbar-logo svg{width:22px;height:22px}
+.topbar-app{font-size:13px;color:rgba(255,255,255,.55);padding-left:16px;border-left:1px solid rgba(255,255,255,.15);font-weight:600}
+.topbar-spacer{flex:1}
+.topbar-dot{width:28px;height:28px;border-radius:50%;background:var(--primary);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
 
-body {
-  font-family: var(--font);
-  background: var(--splunk-bg);
-  color: var(--splunk-text);
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
+/* appnav */
+.appnav{height:38px;background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:stretch;padding:0 20px}
+.nav-item{display:flex;align-items:center;padding:0 16px;font-size:13px;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;transition:all .15s;white-space:nowrap;user-select:none}
+.nav-item:hover{color:var(--text)}
+.nav-item.active{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
 
-/* ---- Top bar ---- */
-.topbar {
-  height: 48px;
-  background: var(--splunk-sidebar);
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  gap: 24px;
-  position: sticky;
-  top: 0;
-  z-index: 200;
-  box-shadow: 0 2px 6px rgba(0,0,0,.25);
-}
-.topbar-logo {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 14px; font-weight: 700; color: #fff; text-decoration: none;
-  letter-spacing: .02em;
-}
-.topbar-logo svg { width: 22px; height: 22px; }
-.topbar-app {
-  font-size: 13px; color: rgba(255,255,255,.55);
-  padding-left: 16px;
-  border-left: 1px solid rgba(255,255,255,.15);
-  font-weight: 600; letter-spacing: .01em;
-}
-.topbar-spacer { flex: 1; }
-.topbar-user {
-  font-size: 12px; color: rgba(255,255,255,.5);
-  display: flex; align-items: center; gap: 6px;
-}
-.topbar-dot {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: var(--splunk-primary); color: #fff;
-  font-size: 12px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center;
-}
+/* pages */
+.page{display:none;padding:20px 24px;max-width:1400px;width:100%;margin:0 auto}
+.page.active{display:block}
 
-/* ---- App nav ---- */
-.appnav {
-  height: 38px;
-  background: var(--splunk-topbar);
-  border-bottom: 1px solid var(--splunk-border);
-  display: flex;
-  align-items: stretch;
-  padding: 0 20px;
-  gap: 0;
-}
-.appnav-item {
-  display: flex; align-items: center;
-  padding: 0 16px;
-  font-size: 13px;
-  color: var(--splunk-muted);
-  cursor: pointer;
-  border-bottom: 3px solid transparent;
-  transition: color .15s, border-color .15s;
-  user-select: none;
-  white-space: nowrap;
-}
-.appnav-item:hover { color: var(--splunk-text); }
-.appnav-item.active {
-  color: var(--splunk-primary);
-  border-bottom-color: var(--splunk-primary);
-  font-weight: 600;
-}
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;font-size:13px;font-family:var(--font);border-radius:var(--radius);border:1px solid transparent;cursor:pointer;font-weight:500;transition:all .15s;text-decoration:none;white-space:nowrap}
+.btn-primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.btn-primary:hover{background:var(--primary-d)}
+.btn-default{background:#fff;color:var(--text);border-color:var(--border)}
+.btn-default:hover{background:var(--th)}
+.btn-danger{background:var(--error);color:#fff;border-color:var(--error)}
+.btn-success{background:var(--success);color:#fff;border-color:var(--success)}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-group{display:flex;gap:8px}
 
-/* ---- Page container ---- */
-.page { display: none; padding: 20px 24px; max-width: 1400px; width: 100%; margin: 0 auto; }
-.page.active { display: block; }
+/* stat cards */
+.stat-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:22px}
+.stat-card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
+.stat-card.ok{border-left:4px solid var(--success)}
+.stat-card.err{border-left:4px solid var(--error)}
+.stat-card.info{border-left:4px solid var(--primary)}
+.stat-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px}
+.stat-val{font-size:28px;font-weight:800;color:var(--text);line-height:1}
+.stat-val.green{color:var(--success)}.stat-val.red{color:var(--error)}
 
-/* ---- Page header ---- */
-.page-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 20px;
-}
-.page-title { font-size: 18px; font-weight: 700; color: var(--splunk-text); }
-.page-sub { font-size: 13px; color: var(--splunk-muted); margin-top: 2px; }
+/* panel */
+.panel{background:#fff;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:18px}
+.panel-header{background:var(--th);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;justify-content:space-between}
+.panel-title{font-size:13px;font-weight:700}
+.panel-body{padding:16px}
 
-/* ---- Buttons ---- */
-.btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 14px; font-size: 13px; font-family: var(--font);
-  border-radius: var(--radius); border: 1px solid transparent;
-  cursor: pointer; font-weight: 500; transition: all .15s;
-  text-decoration: none; white-space: nowrap;
-}
-.btn-primary { background: var(--splunk-primary); color: #fff; border-color: var(--splunk-primary); }
-.btn-primary:hover { background: var(--splunk-primary-d); border-color: var(--splunk-primary-d); }
-.btn-default { background: #fff; color: var(--splunk-text); border-color: var(--splunk-border); }
-.btn-default:hover { background: var(--splunk-th-bg); }
-.btn-danger { background: var(--splunk-error); color: #fff; border-color: var(--splunk-error); }
-.btn-success { background: var(--splunk-success); color: #fff; border-color: var(--splunk-success); }
-.btn-sm { padding: 4px 10px; font-size: 12px; }
-.btn-group { display: flex; gap: 8px; }
+/* table */
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+.t th{background:var(--th);border-bottom:1px solid var(--border);padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);white-space:nowrap}
+.t td{padding:10px 12px;border-bottom:1px solid var(--border-lt);vertical-align:middle}
+.t tr:last-child td{border-bottom:none}
+.t tr:hover td{background:#fafbfc}
+.t code{font-family:var(--mono);font-size:11px;background:var(--code);padding:2px 5px;border-radius:3px;color:#2c5f8a}
 
-/* ---- Summary cards ---- */
-.stat-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 14px;
-  margin-bottom: 22px;
-}
-.stat-card {
-  background: var(--splunk-white);
-  border: 1px solid var(--splunk-border);
-  border-radius: var(--radius);
-  padding: 16px 18px;
-  box-shadow: var(--splunk-card-sh);
-}
-.stat-card.ok   { border-left: 4px solid var(--splunk-success); }
-.stat-card.err  { border-left: 4px solid var(--splunk-error); }
-.stat-card.info { border-left: 4px solid var(--splunk-primary); }
-.stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--splunk-muted); margin-bottom: 6px; }
-.stat-val { font-size: 28px; font-weight: 800; color: var(--splunk-text); line-height: 1; }
-.stat-val.green { color: var(--splunk-success); }
-.stat-val.red   { color: var(--splunk-error); }
+/* badges */
+.badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.b-ok{background:#e8f5e9;color:#2e7d32}.b-err{background:#ffebee;color:#c62828}
+.b-info{background:#e3f2fd;color:#1565c0}.b-warn{background:#fff8e1;color:#f57f17}
+.b-2xx{background:#e8f5e9;color:#2e7d32}.b-4xx{background:#fff8e1;color:#f57f17}.b-5xx{background:#ffebee;color:#c62828}
+.b-none{background:var(--th);color:var(--muted)}
 
-/* ---- Panel ---- */
-.panel {
-  background: var(--splunk-white);
-  border: 1px solid var(--splunk-border);
-  border-radius: var(--radius);
-  box-shadow: var(--splunk-panel-sh);
-  overflow: hidden;
-  margin-bottom: 18px;
-}
-.panel-header {
-  background: var(--splunk-th-bg);
-  border-bottom: 1px solid var(--splunk-border);
-  padding: 10px 16px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.panel-title { font-size: 13px; font-weight: 700; color: var(--splunk-text); }
-.panel-body { padding: 16px; }
+/* wizard */
+.wiz-progress{display:flex;align-items:center;margin-bottom:28px;overflow-x:auto;padding-bottom:4px}
+.w-step{display:flex;flex-direction:column;align-items:center;flex-shrink:0}
+.w-circle{width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:var(--th);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--muted);transition:all .2s}
+.w-step.active .w-circle{background:var(--primary);border-color:var(--primary);color:#fff}
+.w-step.done   .w-circle{background:var(--success);border-color:var(--success);color:#fff}
+.w-label{font-size:11px;color:var(--muted);margin-top:4px;white-space:nowrap}
+.w-step.active .w-label{color:var(--primary);font-weight:700}
+.w-conn{flex:1;height:2px;background:var(--border);margin:0 4px 18px;min-width:20px}
 
-/* ---- Tables ---- */
-table.splunk-table {
-  width: 100%; border-collapse: collapse; font-size: 13px;
-}
-.splunk-table th {
-  background: var(--splunk-th-bg);
-  border-bottom: 1px solid var(--splunk-border);
-  padding: 8px 12px;
-  text-align: left;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  color: var(--splunk-muted);
-  font-weight: 700;
-  white-space: nowrap;
-}
-.splunk-table td {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--splunk-border-lt);
-  vertical-align: middle;
-}
-.splunk-table tr:last-child td { border-bottom: none; }
-.splunk-table tr:hover td { background: #fafbfc; }
-.splunk-table code {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  background: var(--splunk-code-bg);
-  padding: 2px 5px;
-  border-radius: 3px;
-  color: #2c5f8a;
-}
+.step-panel{display:none;animation:fadeIn .2s}
+.step-panel.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
-/* ---- Badges ---- */
-.badge {
-  display: inline-block; padding: 2px 8px; border-radius: 3px;
-  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
-}
-.badge-ok    { background: #e8f5e9; color: #2e7d32; }
-.badge-error { background: #ffebee; color: #c62828; }
-.badge-warn  { background: #fff8e1; color: #f57f17; }
-.badge-info  { background: #e3f2fd; color: #1565c0; }
-.badge-draft { background: #f3e5f5; color: #6a1b9a; }
-.badge-none  { background: var(--splunk-th-bg); color: var(--splunk-muted); }
+.step-header{margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border-lt)}
+.step-title{font-size:16px;font-weight:700;margin-bottom:4px}
+.step-desc{font-size:13px;color:var(--muted)}
 
-/* ---- Wizard ---- */
-.wizard-progress {
-  display: flex; align-items: center;
-  margin-bottom: 28px;
-  overflow-x: auto; padding-bottom: 4px;
-}
-.w-step { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
-.w-circle {
-  width: 34px; height: 34px; border-radius: 50%;
-  border: 2px solid var(--splunk-border);
-  background: var(--splunk-th-bg);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 700; color: var(--splunk-muted);
-  transition: all .2s;
-}
-.w-step.active  .w-circle { background: var(--splunk-primary); border-color: var(--splunk-primary); color: #fff; }
-.w-step.done    .w-circle { background: var(--splunk-success); border-color: var(--splunk-success); color: #fff; }
-.w-label { font-size: 11px; color: var(--splunk-muted); margin-top: 4px; white-space: nowrap; }
-.w-step.active  .w-label { color: var(--splunk-primary); font-weight: 700; }
-.w-conn { flex: 1; height: 2px; background: var(--splunk-border); margin: 0 4px 18px; min-width: 20px; }
-.w-conn.done { background: var(--splunk-success); }
+/* form */
+.fg{margin-bottom:14px}
+.fl{font-size:13px;font-weight:600;margin-bottom:4px;display:block}
+.req{color:var(--error);margin-left:2px}
+.fc{width:100%;padding:6px 10px;font-size:13px;font-family:var(--font);border:1px solid var(--border);border-radius:var(--radius);background:#fff;color:var(--text);outline:none;transition:border-color .15s}
+.fc:focus{border-color:var(--primary);box-shadow:0 0 0 2px rgba(74,144,217,.2)}
+.fc.w-xl{max-width:520px}.fc.w-lg{max-width:380px}.fc.w-md{max-width:240px}.fc.w-sm{max-width:120px}
+textarea.fc{resize:vertical}
+.help{font-size:12px;color:var(--muted);margin-top:4px}
 
-.step-panel { display: none; animation: fadeIn .2s ease; }
-.step-panel.active { display: block; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+/* ── CHAIN BUILDER ── */
+.chain-area{display:flex;flex-direction:column;gap:0}
 
-.step-header { margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--splunk-border-lt); }
-.step-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
-.step-desc { font-size: 13px; color: var(--splunk-muted); }
+.call-card{border:1px solid var(--border);border-radius:6px;background:#fff;overflow:hidden;transition:border-color .15s;margin-bottom:0}
+.call-card.c-ok{border-color:var(--success)}.call-card.c-err{border-color:var(--error)}.call-card.c-run{border-color:var(--primary)}
 
-/* ---- Form controls ---- */
-.form-group { margin-bottom: 16px; }
-.form-label { font-size: 13px; font-weight: 600; color: var(--splunk-text); margin-bottom: 5px; display: block; }
-.req { color: var(--splunk-error); margin-left: 2px; }
-.form-control {
-  width: 100%; padding: 6px 10px; font-size: 13px; font-family: var(--font);
-  border: 1px solid var(--splunk-border); border-radius: var(--radius);
-  background: #fff; color: var(--splunk-text);
-  transition: border-color .15s, box-shadow .15s;
-  outline: none;
-}
-.form-control:focus { border-color: var(--splunk-primary); box-shadow: 0 0 0 2px rgba(74,144,217,.2); }
-.form-control.w-xl  { max-width: 520px; }
-.form-control.w-lg  { max-width: 380px; }
-.form-control.w-md  { max-width: 240px; }
-.form-control.w-sm  { max-width: 120px; }
-select.form-control { cursor: pointer; }
-textarea.form-control { resize: vertical; }
-.help-text { font-size: 12px; color: var(--splunk-muted); margin-top: 4px; }
+.call-hdr{display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--th);border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
+.drag-handle{cursor:grab;color:var(--muted);font-size:16px;flex-shrink:0}
+.call-num{width:22px;height:22px;border-radius:50%;background:var(--primary);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.call-title-input{border:none;background:transparent;font-weight:600;font-size:13px;flex:1;outline:none;color:inherit;min-width:0}
+.mth{font-size:11px;font-weight:700;padding:2px 7px;border-radius:3px}
+.m-GET{background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7}
+.m-POST{background:#fff8e1;color:#f57f17;border:1px solid #ffe082}
+.m-PUT{background:#e3f2fd;color:#1565c0;border:1px solid #90caf9}
+.m-PATCH{background:#f3e5f5;color:#6a1b9a;border:1px solid #ce93d8}
+.m-DELETE{background:#ffebee;color:#c62828;border:1px solid #ef9a9a}
+.auth-tag{font-size:11px;padding:1px 7px;border-radius:10px;background:var(--th);border:1px solid var(--border);color:var(--muted)}
+.auth-tag.ov{background:#fff8e1;border-color:#ffe082;color:#f57f17}
+.status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--border);transition:background .2s}
+.sd-ok{background:var(--success)}.sd-err{background:var(--error)}.sd-run{background:var(--primary);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.call-lat{font-size:11px;color:var(--muted);min-width:68px;text-align:right}
+.call-lat.err{color:var(--error)}
+.chevron{font-size:16px;color:var(--muted);transition:transform .2s;line-height:1}
 
-/* ---- Code block ---- */
-.code-block {
-  font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
-  background: var(--splunk-code-bg); border: 1px solid var(--splunk-border);
-  border-radius: var(--radius); padding: 14px; overflow-x: auto;
-  max-height: 340px; overflow-y: auto; margin: 0;
-  color: var(--splunk-text); white-space: pre;
-}
+.call-body-wrap{display:grid;grid-template-columns:1fr 1fr}
+.call-body-wrap.collapsed{display:none}
+.call-left{padding:14px;border-right:1px solid var(--border)}
+.call-right{padding:14px;background:var(--th)}
 
-/* ---- JSON Tree ---- */
-.json-tree {
-  font-family: var(--font-mono); font-size: 12px; line-height: 1.7;
-  background: var(--splunk-code-bg); border: 1px solid var(--splunk-border);
-  border-radius: var(--radius); padding: 12px;
-  max-height: 380px; overflow-y: auto;
-}
-.jt-key  { color: #1565c0; }
-.jt-str  { color: #2e7d32; }
-.jt-num  { color: #6a1b9a; }
-.jt-bool { color: #e65100; }
-.jt-null { color: var(--splunk-muted); }
-.jt-leaf {
-  cursor: pointer; border-radius: 2px; padding: 0 2px;
-  transition: background .1s;
-}
-.jt-leaf:hover  { background: rgba(74,144,217,.15); }
-.jt-leaf.sel    { background: rgba(74,144,217,.3); outline: 1px dashed var(--splunk-primary); }
+.cf-row{margin-bottom:11px}
+.cf-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:4px;display:block}
+.cf-row input,.cf-row select,.cf-row textarea{width:100%;padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:3px;background:#fff;color:var(--text);font-family:inherit}
+.cf-row textarea{resize:vertical;min-height:50px;font-family:var(--mono)}
+.cf-inline{display:flex;gap:6px;align-items:center}
+.cf-inline input,.cf-inline select{flex:1}
 
-/* ---- Test response tabs ---- */
-.resp-tabs { display: flex; border-bottom: 1px solid var(--splunk-border); margin-bottom: 0; }
-.r-tab {
-  padding: 6px 14px; font-size: 13px; cursor: pointer; background: none;
-  border: 1px solid transparent; border-bottom: none; border-radius: 3px 3px 0 0;
-  color: var(--splunk-muted); font-family: var(--font);
-}
-.r-tab.active {
-  background: #fff; border-color: var(--splunk-border);
-  border-bottom-color: #fff; color: var(--splunk-text); font-weight: 700;
-  position: relative; bottom: -1px;
-}
-.r-panel { display: none; border: 1px solid var(--splunk-border); border-top: none; border-radius: 0 0 4px 4px; }
-.r-panel.active { display: block; }
+/* response panel */
+.resp-hdr{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.resp-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);flex:1}
+.resp-tabs{display:flex;border-bottom:1px solid var(--border)}
+.rtab{padding:4px 10px;font-size:11px;cursor:pointer;background:none;border:1px solid transparent;border-bottom:none;border-radius:3px 3px 0 0;color:var(--muted);font-family:inherit}
+.rtab.active{background:#fff;border-color:var(--border);border-bottom-color:#fff;color:var(--text);font-weight:700;position:relative;bottom:-1px}
+.rpanel{display:none;border:1px solid var(--border);border-top:none;border-radius:0 0 3px 3px}
+.rpanel.active{display:block}
+.rcode{font-family:var(--mono);font-size:11px;line-height:1.6;padding:10px;max-height:190px;overflow-y:auto;white-space:pre}
+.rplaceholder{font-size:12px;color:var(--muted);padding:22px;text-align:center;font-style:italic}
+.rvars{padding:10px;max-height:190px;overflow-y:auto}
 
-/* ---- HTTP badge ---- */
-.http-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-.http-code-2xx { background: #e8f5e9; color: #2e7d32; padding: 3px 10px; border-radius: 3px; font-size: 12px; font-weight: 700; }
-.http-latency  { font-size: 12px; color: var(--splunk-muted); }
-.http-ctype    { font-size: 12px; color: var(--splunk-muted); font-family: var(--font-mono); }
+/* connector */
+.connector{display:flex;align-items:center;justify-content:center;padding:6px 0;gap:8px}
+.conn-line{flex:1;height:1px;background:var(--border);max-width:60px}
+.conn-body{display:flex;flex-direction:column;align-items:center;gap:5px}
+.conn-label{font-size:11px;color:var(--muted);background:var(--th);border:1px solid var(--border);padding:2px 10px;border-radius:10px}
+.var-chips{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;max-width:540px}
+.vchip{display:inline-flex;align-items:center;background:#e3f2fd;color:#1565c0;border:1px solid #90caf9;border-radius:3px;padding:1px 7px;font-family:var(--mono);font-size:11px;cursor:pointer;transition:background .1s}
+.vchip:hover{background:#bbdefb}
 
-/* ---- Parsing layout ---- */
-.parsing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.sec-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--splunk-muted); font-weight: 700; margin-bottom: 10px; }
-.field-row {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--splunk-th-bg); border: 1px solid var(--splunk-border);
-  border-radius: var(--radius); padding: 7px 10px; margin-bottom: 8px;
-}
-.field-row .fp { font-family: var(--font-mono); font-size: 12px; color: #1565c0; flex: 1; }
-.field-row .fa { font-size: 12px; flex: 1; color: var(--splunk-text); }
-.arrow-sep { color: var(--splunk-muted); font-size: 12px; flex-shrink: 0; }
+/* add call */
+.add-call{border:1px dashed var(--border);border-radius:var(--radius);padding:10px;text-align:center;cursor:pointer;color:var(--muted);font-size:12px;transition:all .15s;margin-top:8px;background:none;width:100%}
+.add-call:hover{border-color:var(--primary);color:var(--primary);background:#f0f7ff}
 
-/* ---- Tracciato grid ---- */
-.tracciato-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.t-row {}
-.t-label { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
-.t-hint  { font-size: 11px; color: var(--splunk-muted); margin-top: 3px; }
+/* drag */
+.call-card.dragging{opacity:.45;border-style:dashed}
+.call-card.drag-over{border-color:var(--primary);border-style:dashed}
 
-/* ---- Summary box ---- */
-.summary-box {
-  background: var(--splunk-th-bg); border: 1px solid var(--splunk-border);
-  border-radius: var(--radius); padding: 16px;
-}
-.summary-grid { display: grid; grid-template-columns: 160px 1fr; gap: 5px 12px; font-size: 12px; }
-.sk { color: var(--splunk-muted); font-weight: 700; }
-.sv { font-family: var(--font-mono); color: var(--splunk-text); }
+/* json tree */
+.jt-key{color:#1565c0}.jt-str{color:#2e7d32}.jt-num{color:#6a1b9a}.jt-bool{color:#e65100}.jt-null{color:var(--muted)}
+.jt-leaf{cursor:pointer;border-radius:2px;padding:0 2px;transition:background .1s}
+.jt-leaf:hover{background:rgba(74,144,217,.15)}.jt-leaf.sel{background:rgba(74,144,217,.3)}
 
-/* ---- Info banner ---- */
-.info-banner {
-  background: #e3f2fd; border: 1px solid #90caf9;
-  border-radius: var(--radius); padding: 10px 14px;
-  font-size: 13px; color: #1565c0; margin-bottom: 18px;
-}
+/* wizard nav */
+.wiz-nav{display:flex;align-items:center;justify-content:space-between;margin-top:28px;padding-top:16px;border-top:1px solid var(--border-lt)}
+.wn-center{flex:1;text-align:center;font-size:12px;color:var(--muted)}
+.wn-right{display:flex;gap:8px}
 
-/* ---- Modal ---- */
-.modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.5);
-  z-index: 9999; display: flex; align-items: center; justify-content: center;
-}
-.modal {
-  background: #fff; border-radius: 6px; box-shadow: 0 12px 40px rgba(0,0,0,.2);
-  width: 540px; max-width: 96vw; max-height: 92vh; overflow-y: auto;
-}
-.modal-wide { width: 700px; }
-.modal-head { padding: 16px 20px 12px; border-bottom: 1px solid var(--splunk-border); }
-.modal-title { font-size: 15px; font-weight: 700; }
-.modal-body { padding: 20px; }
-.modal-foot { padding: 12px 20px; border-top: 1px solid var(--splunk-border); display: flex; justify-content: flex-end; gap: 8px; }
-.modal-warn {
-  background: #fff3cd; border: 1px solid #ffc107; border-radius: var(--radius);
-  padding: 8px 12px; font-size: 13px; color: #856404; margin-top: 10px;
-}
+/* modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center}
+.modal{background:#fff;border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,.2);width:540px;max-width:96vw;max-height:92vh;overflow-y:auto}
+.modal-wide{width:700px}
+.modal-head{padding:16px 20px 12px;border-bottom:1px solid var(--border)}
+.modal-title{font-size:15px;font-weight:700}
+.modal-body{padding:20px}
+.modal-foot{padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+.modal-warn{background:#fff3cd;border:1px solid #ffc107;border-radius:var(--radius);padding:8px 12px;font-size:13px;color:#856404;margin-top:10px}
 
-/* ---- Call card ---- */
-.call-card {
-  background: var(--splunk-th-bg); border: 1px solid var(--splunk-border);
-  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px;
-}
-.call-card-head {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 12px;
-}
-.call-num { font-size: 12px; font-weight: 700; color: var(--splunk-primary); text-transform: uppercase; letter-spacing: .05em; }
-
-/* ---- Wizard nav ---- */
-.wizard-nav {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-top: 28px; padding-top: 16px;
-  border-top: 1px solid var(--splunk-border-lt);
-}
-.wn-center { flex: 1; text-align: center; font-size: 12px; color: var(--splunk-muted); }
-.wn-right { display: flex; gap: 8px; }
-
-/* ---- Cred table ---- */
-.divider { height: 1px; background: var(--splunk-border-lt); margin: 18px 0; }
-.gen-result {
-  background: #e8f5e9; border: 1px solid #a5d6a7; border-radius: var(--radius);
-  padding: 16px; font-size: 13px; color: #2e7d32; margin-bottom: 14px;
-}
-.gen-result strong { display: block; font-size: 14px; margin-bottom: 6px; }
-
-/* ---- Scrollbar ---- */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--splunk-border); border-radius: 3px; }
-
-/* ---- Misc ---- */
-.flex-row { display: flex; gap: 8px; align-items: center; }
-.mt8 { margin-top: 8px; }
-.mt16 { margin-top: 16px; }
-.mb0 { margin-bottom: 0 !important; }
-.muted { color: var(--splunk-muted); }
-em { font-style: normal; color: var(--splunk-muted); }
-.demo-badge {
-  position: fixed; bottom: 14px; right: 14px; z-index: 300;
-  background: var(--splunk-sidebar); color: rgba(255,255,255,.7);
-  font-size: 11px; padding: 5px 12px; border-radius: 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,.3);
-}
+/* misc */
+.divider{height:1px;background:var(--border-lt);margin:18px 0}
+.info-banner{background:#e3f2fd;border:1px solid #90caf9;border-radius:var(--radius);padding:10px 14px;font-size:13px;color:#1565c0;margin-bottom:18px}
+.sum-grid{display:grid;grid-template-columns:160px 1fr;gap:5px 12px;font-size:12px}
+.sk{color:var(--muted);font-weight:700}.sv{font-family:var(--mono)}
+.code-block{font-family:var(--mono);font-size:11px;background:var(--code);border:1px solid var(--border);border-radius:var(--radius);padding:12px;max-height:280px;overflow-y:auto;white-space:pre}
+.gen-ok{background:#e8f5e9;border:1px solid #a5d6a7;border-radius:var(--radius);padding:14px;font-size:13px;color:#2e7d32;margin-bottom:12px}
+.demo-badge{position:fixed;bottom:14px;right:14px;z-index:300;background:var(--sidebar);color:rgba(255,255,255,.7);font-size:11px;padding:5px 12px;border-radius:20px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 </style>
 </head>
 <body>
 
-<!-- ============ TOP BAR ============ -->
+<!-- topbar -->
 <div class="topbar">
   <a href="#" class="topbar-logo" onclick="return false">
-    <!-- Splunk chevron logo mark SVG -->
-    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M5 7l7 5-7 5V7z" fill="#65a637"/>
-      <path d="M12 7l7 5-7 5V7z" fill="#65a637" opacity=".6"/>
-    </svg>
+    <svg viewBox="0 0 24 24"><path d="M5 7l7 5-7 5V7z" fill="#65a637"/><path d="M12 7l7 5-7 5V7z" fill="#65a637" opacity=".6"/></svg>
     Splunk
   </a>
-  <span class="topbar-app">API Connect</span>
+  <span class="topbar-app">API Connect v2</span>
   <div class="topbar-spacer"></div>
-  <div class="topbar-user">
-    <div class="topbar-dot">A</div>
-    admin
-  </div>
+  <div class="topbar-dot">A</div>
 </div>
 
-<!-- ============ APP NAV ============ -->
+<!-- appnav -->
 <div class="appnav">
-  <div class="appnav-item active" onclick="showPage('dashboard', this)">Dashboard</div>
-  <div class="appnav-item" onclick="showPage('builder', this)">Input Builder</div>
-  <div class="appnav-item" onclick="showPage('credentials', this)">Credential Manager</div>
+  <div class="nav-item active" onclick="showPage('dashboard',this)">Dashboard</div>
+  <div class="nav-item" onclick="showPage('builder',this)">Input Builder</div>
+  <div class="nav-item" onclick="showPage('credentials',this)">Credential Manager</div>
 </div>
 
-<!-- ================================================================
-     PAGE 1: DASHBOARD
-     ================================================================ -->
+<!-- ═══════════════════════════ DASHBOARD ═══════════════════════════ -->
 <div class="page active" id="page-dashboard">
-  <div class="page-header">
-    <div>
-      <div class="page-title">API Connect — Dashboard</div>
-      <div class="page-sub">Monitoraggio di tutti gli input API configurati</div>
-    </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div><div style="font-size:18px;font-weight:700">Dashboard</div><div style="font-size:13px;color:var(--muted)">Monitoraggio input API configurati</div></div>
     <div class="btn-group">
       <button class="btn btn-default btn-sm" onclick="alert('Demo: aggiornamento simulato.')">↻ Aggiorna</button>
-      <button class="btn btn-primary" onclick="showPage('builder', document.querySelectorAll('.appnav-item')[1])">
-        + Nuovo Input
-      </button>
+      <button class="btn btn-primary" onclick="showPage('builder',document.querySelectorAll('.nav-item')[1])">+ Nuovo Input</button>
     </div>
   </div>
-
   <div class="stat-cards">
-    <div class="stat-card info">
-      <div class="stat-label">Input totali</div>
-      <div class="stat-val">4</div>
-    </div>
-    <div class="stat-card ok">
-      <div class="stat-label">OK (ultimo run)</div>
-      <div class="stat-val green">3</div>
-    </div>
-    <div class="stat-card err">
-      <div class="stat-label">ERROR (ultimo run)</div>
-      <div class="stat-val red">1</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Log inviati oggi</div>
-      <div class="stat-val">12.847</div>
-    </div>
+    <div class="stat-card info"><div class="stat-label">Input totali</div><div class="stat-val">4</div></div>
+    <div class="stat-card ok"><div class="stat-label">OK (ultimo run)</div><div class="stat-val green">3</div></div>
+    <div class="stat-card err"><div class="stat-label">ERROR</div><div class="stat-val red">1</div></div>
+    <div class="stat-card"><div class="stat-label">Log oggi</div><div class="stat-val">12.847</div></div>
   </div>
-
   <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">Input configurati</span>
-    </div>
+    <div class="panel-header"><span class="panel-title">Input configurati</span></div>
     <div style="overflow-x:auto">
-      <table class="splunk-table">
-        <thead>
-          <tr>
-            <th>Nome</th>
-            <th>Endpoint</th>
-            <th>Auth</th>
-            <th>Schedule</th>
-            <th>Index / Sourcetype</th>
-            <th>Ultimo run</th>
-            <th>Stato</th>
-            <th>Log</th>
-            <th>Latenza</th>
-            <th>Prossima esec.</th>
-            <th>Azioni</th>
-          </tr>
-        </thead>
+      <table class="t">
+        <thead><tr><th>Nome</th><th>Call chain</th><th>Auth globale</th><th>Schedule</th><th>Index/Sourcetype</th><th>Stato</th><th>Log</th><th>Latenza</th><th>Azioni</th></tr></thead>
         <tbody>
-          <tr>
-            <td><strong>api_auth_login</strong></td>
-            <td><code>https://idp.corp.it/v2/events</code></td>
-            <td><span class="badge badge-info">Bearer</span></td>
-            <td><code>*/5 * * * *</code></td>
-            <td>security / <em>api_connect:auth</em></td>
-            <td>14:30:02</td>
-            <td><span class="badge badge-ok">OK</span></td>
-            <td>1.243</td>
-            <td>342 ms</td>
-            <td>ogni 5 min</td>
-            <td>
-              <div class="btn-group">
-                <button class="btn btn-default btn-sm" onclick="showPage('builder', document.querySelectorAll('.appnav-item')[1]); setTimeout(()=>goStep(6),200)">✏ Modifica</button>
-                <button class="btn btn-default btn-sm" onclick="showDeleteModal('api_auth_login')">🗑</button>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td><strong>api_hr_employees</strong></td>
-            <td><code>https://hr-api.corp.it/api/v1/users</code></td>
-            <td><span class="badge badge-info">Basic</span></td>
-            <td><code>0 * * * *</code></td>
-            <td>hr_data / <em>api_connect:hr</em></td>
-            <td>14:00:01</td>
-            <td><span class="badge badge-ok">OK</span></td>
-            <td>8.901</td>
-            <td>1.203 ms</td>
-            <td>ogni ora</td>
-            <td>
-              <div class="btn-group">
-                <button class="btn btn-default btn-sm" onclick="alert('Demo: apertura wizard in modalità modifica.')">✏ Modifica</button>
-                <button class="btn btn-default btn-sm" onclick="showDeleteModal('api_hr_employees')">🗑</button>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td><strong>api_erp_transactions</strong></td>
-            <td><code>https://erp.corp.it/rest/txn</code></td>
-            <td><span class="badge badge-info">OAuth2 CC</span></td>
-            <td><code>*/10 * * * *</code></td>
-            <td>finance / <em>api_connect:erp</em></td>
-            <td>14:20:05</td>
-            <td><span class="badge badge-error">ERROR</span></td>
-            <td>0</td>
-            <td>—</td>
-            <td>ogni 10 min</td>
-            <td>
-              <div class="btn-group">
-                <button class="btn btn-default btn-sm" onclick="alert('Demo: apertura wizard in modalità modifica.')">✏ Modifica</button>
-                <button class="btn btn-default btn-sm" onclick="showDeleteModal('api_erp_transactions')">🗑</button>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td><strong>api_firewall_deny</strong></td>
-            <td><code>https://fw-api.corp.it/logs/denied</code></td>
-            <td><span class="badge badge-info">API Key</span></td>
-            <td><code>*/1 * * * *</code></td>
-            <td>network / <em>api_connect:fw</em></td>
-            <td>14:31:00</td>
-            <td><span class="badge badge-ok">OK</span></td>
-            <td>2.703</td>
-            <td>87 ms</td>
-            <td>ogni 1 min</td>
-            <td>
-              <div class="btn-group">
-                <button class="btn btn-default btn-sm" onclick="alert('Demo: apertura wizard in modalità modifica.')">✏ Modifica</button>
-                <button class="btn btn-default btn-sm" onclick="showDeleteModal('api_firewall_deny')">🗑</button>
-              </div>
-            </td>
-          </tr>
+          <tr><td><strong>api_auth_login</strong></td><td>1 call</td><td><span class="badge b-info">Bearer</span></td><td><code>*/5 * * * *</code></td><td>security/<em>api_connect:auth</em></td><td><span class="badge b-ok">OK</span></td><td>1.243</td><td>342ms</td><td><div class="btn-group"><button class="btn btn-default btn-sm" onclick="showPage('builder',document.querySelectorAll('.nav-item')[1])">✏</button><button class="btn btn-default btn-sm" onclick="showDel('api_auth_login')">🗑</button></div></td></tr>
+          <tr><td><strong>api_erp_transactions</strong></td><td><span class="badge b-info">2 call + join</span></td><td><span class="badge b-info">OAuth2 CC</span></td><td><code>*/10 * * * *</code></td><td>finance/<em>api_connect:erp</em></td><td><span class="badge b-ok">OK</span></td><td>8.901</td><td>600ms</td><td><div class="btn-group"><button class="btn btn-default btn-sm" onclick="showPage('builder',document.querySelectorAll('.nav-item')[1]);setTimeout(()=>goStep(2),100)">✏</button><button class="btn btn-default btn-sm" onclick="showDel('api_erp_transactions')">🗑</button></div></td></tr>
+          <tr><td><strong>api_hr_employees</strong></td><td>1 call</td><td><span class="badge b-info">Basic</span></td><td><code>0 * * * *</code></td><td>hr_data/<em>api_connect:hr</em></td><td><span class="badge b-err">ERROR</span></td><td>0</td><td>—</td><td><div class="btn-group"><button class="btn btn-default btn-sm" onclick="alert('Demo: modifica.')">✏</button><button class="btn btn-default btn-sm" onclick="showDel('api_hr_employees')">🗑</button></div></td></tr>
+          <tr><td><strong>api_firewall_deny</strong></td><td>1 call</td><td><span class="badge b-info">API Key</span></td><td><code>*/1 * * * *</code></td><td>network/<em>api_connect:fw</em></td><td><span class="badge b-ok">OK</span></td><td>2.703</td><td>87ms</td><td><div class="btn-group"><button class="btn btn-default btn-sm" onclick="alert('Demo: modifica.')">✏</button><button class="btn btn-default btn-sm" onclick="showDel('api_firewall_deny')">🗑</button></div></td></tr>
         </tbody>
       </table>
     </div>
   </div>
 </div>
 
-<!-- ================================================================
-     PAGE 2: INPUT BUILDER
-     ================================================================ -->
+<!-- ═══════════════════════════ INPUT BUILDER ═══════════════════════════ -->
 <div class="page" id="page-builder">
-  <div class="page-header">
-    <div>
-      <div class="page-title">Input Builder</div>
-      <div class="page-sub">Wizard guidato — creazione Modular Input API (7 step)</div>
-    </div>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div><div style="font-size:18px;font-weight:700">Input Builder</div><div style="font-size:13px;color:var(--muted)">Wizard guidato con Chain Builder — 7 step</div></div>
   </div>
 
-  <!-- Wizard progress -->
-  <div class="wizard-progress" id="wiz-progress">
-    <div class="w-step active" data-s="1"><div class="w-circle">1</div><div class="w-label">Autenticazione</div></div>
-    <div class="w-conn" id="wc-1"></div>
-    <div class="w-step" data-s="2"><div class="w-circle">2</div><div class="w-label">Endpoint</div></div>
-    <div class="w-conn" id="wc-2"></div>
-    <div class="w-step" data-s="3"><div class="w-circle">3</div><div class="w-label">Test chiamata</div></div>
-    <div class="w-conn" id="wc-3"></div>
-    <div class="w-step" data-s="4"><div class="w-circle">4</div><div class="w-label">Parsing</div></div>
-    <div class="w-conn" id="wc-4"></div>
-    <div class="w-step" data-s="5"><div class="w-circle">5</div><div class="w-label">Tracciato</div></div>
-    <div class="w-conn" id="wc-5"></div>
-    <div class="w-step" data-s="6"><div class="w-circle">6</div><div class="w-label">Output</div></div>
-    <div class="w-conn" id="wc-6"></div>
-    <div class="w-step" data-s="7"><div class="w-circle">7</div><div class="w-label">Logger</div></div>
+  <!-- wizard progress -->
+  <div class="wiz-progress" id="wiz">
+    <div class="w-step active" data-s="1"><div class="w-circle">1</div><div class="w-label">Auth globale</div></div>
+    <div class="w-conn" id="wc1"></div>
+    <div class="w-step" data-s="2"><div class="w-circle">2</div><div class="w-label">Chain Builder</div></div>
+    <div class="w-conn" id="wc2"></div>
+    <div class="w-step" data-s="3"><div class="w-circle">3</div><div class="w-label">Parsing</div></div>
+    <div class="w-conn" id="wc3"></div>
+    <div class="w-step" data-s="4"><div class="w-circle">4</div><div class="w-label">Tracciato</div></div>
+    <div class="w-conn" id="wc4"></div>
+    <div class="w-step" data-s="5"><div class="w-circle">5</div><div class="w-label">Output</div></div>
+    <div class="w-conn" id="wc5"></div>
+    <div class="w-step" data-s="6"><div class="w-circle">6</div><div class="w-label">Logger</div></div>
+    <div class="w-conn" id="wc6"></div>
+    <div class="w-step" data-s="7"><div class="w-circle">7</div><div class="w-label">Genera</div></div>
   </div>
 
   <!-- STEP 1 -->
-  <div class="panel step-panel active" id="sp-1">
+  <div class="panel step-panel active" id="sp1">
     <div class="panel-body">
-      <div class="step-header">
-        <div class="step-title">Step 1 — Autenticazione</div>
-        <div class="step-desc">Seleziona tipo di autenticazione e la credenziale da usare (da password.conf).</div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Nome input<span class="req">*</span></label>
-        <input class="form-control w-xl" id="f-name" value="api_erp_transactions" placeholder="es. api_auth_events"/>
-        <div class="help-text">Solo lettere, numeri e underscore. Iniziare con lettera.</div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Tipo autenticazione<span class="req">*</span></label>
-        <select class="form-control w-xl" id="f-auth" onchange="toggleAuthFields(this.value)">
-          <option value="">— Seleziona —</option>
-          <option value="bearer">Bearer Token</option>
-          <option value="basic">Basic Auth</option>
-          <option selected value="api_key_header">API Key — Header</option>
-          <option value="api_key_query">API Key — Query param</option>
-          <option value="oauth2_cc">OAuth2 Client Credentials</option>
+      <div class="step-header"><div class="step-title">Step 1 — Autenticazione globale</div><div class="step-desc">Configura il default di autenticazione. Ogni call nello Step 2 può sovrascriverlo.</div></div>
+      <div class="fg"><label class="fl">Nome input<span class="req">*</span></label><input class="fc w-xl" id="f-name" value="api_erp_transactions"/></div>
+      <div class="fg"><label class="fl">Auth globale<span class="req">*</span></label>
+        <select class="fc w-xl" id="f-auth" onchange="toggleAuthGlobal(this.value)">
+          <option value="none">Nessuna</option><option value="bearer">Bearer Token</option>
+          <option value="basic">Basic Auth</option><option value="api_key_header">API Key Header</option>
+          <option value="oauth2_cc" selected>OAuth2 Client Credentials</option>
         </select>
       </div>
-      <div class="form-group" id="fg-cred">
-        <label class="form-label">Credenziale (password.conf)<span class="req">*</span></label>
-        <div class="flex-row">
-          <select class="form-control w-xl">
-            <option>api_connect:api_key:erp_prod (erp_service)</option>
-            <option>api_connect:bearer:idp_prod (svc_splunk)</option>
-            <option>api_connect:basic:hr_api (hr_reader)</option>
-          </select>
-          <button class="btn btn-default btn-sm" onclick="showPage('credentials', document.querySelectorAll('.appnav-item')[2])">+ Nuova</button>
+      <div id="fg-cred"><div class="fg"><label class="fl">Credenziale<span class="req">*</span></label>
+        <div style="display:flex;gap:8px;max-width:520px">
+          <select class="fc"><option>api_connect:oauth2_cc:erp_prod (erp_client)</option><option>api_connect:bearer:idp (svc_splunk)</option></select>
+          <button class="btn btn-default btn-sm" onclick="showPage('credentials',document.querySelectorAll('.nav-item')[2])">+ Nuova</button>
         </div>
-        <div class="help-text">Gestite in modo sicuro tramite password.conf. I secret non transitano mai nel browser.</div>
-      </div>
-      <div id="fg-apikey">
-        <div class="form-group">
-          <label class="form-label">Nome header<span class="req">*</span></label>
-          <input class="form-control w-md" value="X-API-Key" placeholder="es. X-API-Key"/>
-        </div>
+      </div></div>
+      <div id="fg-oauth" style="margin-top:8px">
+        <div class="fg"><label class="fl">Token URL<span class="req">*</span></label><input class="fc w-xl" value="https://auth.erp.corp.it/oauth/token"/></div>
+        <div class="fg"><label class="fl">Scope</label><input class="fc w-xl" value="read"/></div>
       </div>
     </div>
   </div>
 
-  <!-- STEP 2 -->
-  <div class="panel step-panel" id="sp-2">
+  <!-- STEP 2: CHAIN BUILDER -->
+  <div class="panel step-panel" id="sp2">
     <div class="panel-body">
       <div class="step-header">
-        <div class="step-title">Step 2 — Endpoint e chiamate</div>
-        <div class="step-desc">URL, metodo, header e body. Aggiungi più chiamate in cascata o abilita la paginazione.</div>
+        <div class="step-title">Step 2 — Chain Builder</div>
+        <div class="step-desc">Aggiungi, rimuovi e riordina le chiamate. Ogni card ha risposta live, auth override e error policy indipendenti. Usa <code>{{variabile}}</code> per passare dati tra call.</div>
       </div>
-      <div class="call-card">
-        <div class="call-card-head"><span class="call-num">Chiamata 1</span></div>
-        <div class="form-group">
-          <label class="form-label">URL<span class="req">*</span></label>
-          <input class="form-control w-xl" value="https://erp.corp.it/rest/txn"/>
-        </div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap">
-          <div class="form-group" style="flex:0 0 auto">
-            <label class="form-label">Metodo</label>
-            <select class="form-control w-sm"><option>GET</option><option>POST</option></select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Headers aggiuntivi (JSON)</label>
-          <textarea class="form-control w-xl" rows="2" style="font-family:var(--font-mono);font-size:12px">{"Accept": "application/json"}</textarea>
-        </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="runAll()">▶ Run All</button>
+        <span style="font-size:12px;color:var(--muted)" id="run-status"></span>
+        <div style="flex:1"></div>
+        <label style="font-size:12px;color:var(--muted)">Schedule:</label>
+        <input class="fc" style="max-width:140px" value="*/10 * * * *" oninput="document.getElementById('cron-prev').textContent=cronHuman(this.value)"/>
+        <span id="cron-prev" style="font-size:12px;color:var(--muted);font-style:italic">ogni 10 minuti</span>
       </div>
-      <div class="call-card" style="border-left:3px solid var(--splunk-primary)">
-        <div class="call-card-head">
-          <span class="call-num">Chiamata 2 — cascata</span>
-          <button class="btn btn-default btn-sm">− Rimuovi</button>
-        </div>
-        <div class="form-group">
-          <label class="form-label">URL</label>
-          <input class="form-control w-xl" value="https://erp.corp.it/rest/txn/{{transaction_id}}/details"/>
-          <div class="help-text">Usa <code>{{campo}}</code> per inserire valori dalla risposta della chiamata precedente.</div>
-        </div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap">
-          <div class="form-group" style="flex:0 0 auto">
-            <label class="form-label">Metodo</label>
-            <select class="form-control w-sm"><option>GET</option></select>
-          </div>
-        </div>
-      </div>
-      <button class="btn btn-default btn-sm mt8" onclick="alert('Demo: aggiunge una chiamata cascata.')">+ Aggiungi chiamata</button>
+
+      <!-- CHAIN AREA -->
+      <div class="chain-area" id="chain-area"></div>
+      <button class="add-call" onclick="addCall()">+ Aggiungi chiamata</button>
+
       <div class="divider"></div>
-      <div class="form-group">
-        <label class="form-label">Paginazione</label>
-        <select class="form-control w-lg">
-          <option>Nessuna</option>
-          <option selected>Offset/Limit (page=N)</option>
-          <option>Cursor / next_token</option>
-          <option>Link header (RFC 5988)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Param pagina</label>
-        <div class="flex-row">
-          <input class="form-control w-md" value="page"/>
-          <span class="muted" style="font-size:13px">oppure JSONPath cursore</span>
-          <input class="form-control w-md" placeholder="$.next_cursor"/>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div class="fg"><label class="fl">Paginazione</label>
+          <select class="fc w-lg"><option selected>Nessuna</option><option>Offset/Limit</option><option>Cursor/next_token</option><option>Link header</option></select>
         </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Schedule (cron)<span class="req">*</span></label>
-        <div class="flex-row">
-          <input class="form-control w-md" value="*/10 * * * *"/>
-          <span style="font-size:12px;color:var(--splunk-muted);font-style:italic">ogni 10 minuti</span>
-        </div>
+        <div class="fg"><label class="fl">Max pagine</label><input class="fc w-sm" value="100"/></div>
       </div>
     </div>
   </div>
 
   <!-- STEP 3 -->
-  <div class="panel step-panel" id="sp-3">
+  <div class="panel step-panel" id="sp3">
     <div class="panel-body">
-      <div class="step-header">
-        <div class="step-title">Step 3 — Test chiamata</div>
-        <div class="step-desc">Esegue la chiamata lato server. Le credenziali non transitano nel browser.</div>
-      </div>
-      <div class="flex-row" style="margin-bottom:16px">
-        <button class="btn btn-primary" onclick="simulateTest()">▶ Esegui test</button>
-        <span id="test-status-lbl" style="font-size:13px;color:var(--splunk-muted)"></span>
-      </div>
-      <div id="test-result" style="display:none">
-        <div class="http-meta">
-          <span class="http-code-2xx">HTTP 200</span>
-          <span class="http-latency">⏱ 412 ms</span>
-          <span class="http-ctype">application/json</span>
-        </div>
-        <div class="resp-tabs">
-          <button class="r-tab active" onclick="switchTab('raw',this)">Raw</button>
-          <button class="r-tab" onclick="switchTab('pretty',this)">Pretty</button>
-          <button class="r-tab" onclick="switchTab('tree',this)">Tree (JSON)</button>
-        </div>
-        <div class="r-panel active" id="rtab-raw">
-          <pre class="code-block">{"total":2,"page":1,"data":[{"id":"TXN001","timestamp":"2024-06-14T14:30:00Z","amount":1500.00,"currency":"EUR","user_id":"U42","user_name":"mario.rossi","src_ip":"10.0.1.55","operation":"TRANSFER","target_account":"IT60X0542811101000000123456","prev_balance":5000.00,"new_balance":3500.00},{"id":"TXN002","timestamp":"2024-06-14T14:31:05Z","amount":250.00,"currency":"EUR","user_id":"U17","user_name":"luigi.bianchi","src_ip":"10.0.2.12","operation":"PAYMENT","target_account":"IT60X0542811101000000654321","prev_balance":1200.00,"new_balance":950.00}],"next_page":2}</pre>
-        </div>
-        <div class="r-panel" id="rtab-pretty">
-          <pre class="code-block">{
-  <span class="jt-key">"total"</span>: <span class="jt-num">2</span>,
-  <span class="jt-key">"page"</span>: <span class="jt-num">1</span>,
-  <span class="jt-key">"data"</span>: [
-    {
-      <span class="jt-key">"id"</span>: <span class="jt-str">"TXN001"</span>,
-      <span class="jt-key">"timestamp"</span>: <span class="jt-str">"2024-06-14T14:30:00Z"</span>,
-      <span class="jt-key">"amount"</span>: <span class="jt-num">1500.00</span>,
-      <span class="jt-key">"user_id"</span>: <span class="jt-str">"U42"</span>,
-      <span class="jt-key">"user_name"</span>: <span class="jt-str">"mario.rossi"</span>,
-      <span class="jt-key">"src_ip"</span>: <span class="jt-str">"10.0.1.55"</span>,
-      <span class="jt-key">"operation"</span>: <span class="jt-str">"TRANSFER"</span>,
-      <span class="jt-key">"prev_balance"</span>: <span class="jt-num">5000.00</span>,
-      <span class="jt-key">"new_balance"</span>: <span class="jt-num">3500.00</span>
-    }, ...
-  ],
-  <span class="jt-key">"next_page"</span>: <span class="jt-num">2</span>
-}</pre>
-        </div>
-        <div class="r-panel" id="rtab-tree">
-          <div class="json-tree">
-            <span class="jt-key">"total"</span>: <span class="jt-num">2</span><br>
-            <span class="jt-key">"page"</span>: <span class="jt-num">1</span><br>
+      <div class="step-header"><div class="step-title">Step 3 — Parsing risposta</div><div class="step-desc">Tree popolato dalla risposta testata nello Step 2. Clicca per selezionare i campi.</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:8px">Risposta — Tree interattivo</div>
+          <div style="font-family:var(--mono);font-size:12px;line-height:1.7;background:var(--code);border:1px solid var(--border);border-radius:var(--radius);padding:10px;max-height:340px;overflow-y:auto">
             <span class="jt-key">"data"</span>: [<br>
             &nbsp;&nbsp;{<br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,'$.data[0].id')" title="$.data[0].id"><span class="jt-key">"id"</span>: <span class="jt-str">"TXN001"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,'$.data[0].timestamp')" title="$.data[0].timestamp"><span class="jt-key">"timestamp"</span>: <span class="jt-str">"2024-06-14T14:30:00Z"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,'$.data[0].amount')" title="$.data[0].amount"><span class="jt-key">"amount"</span>: <span class="jt-num">1500.00</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,'$.data[0].user_id')" title="$.data[0].user_id"><span class="jt-key">"user_id"</span>: <span class="jt-str">"U42"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,'$.data[0].user_name')" title="$.data[0].user_name"><span class="jt-key">"user_name"</span>: <span class="jt-str">"mario.rossi"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,'$.data[0].src_ip')" title="$.data[0].src_ip"><span class="jt-key">"src_ip"</span>: <span class="jt-str">"10.0.1.55"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,'$.data[0].operation')" title="$.data[0].operation"><span class="jt-key">"operation"</span>: <span class="jt-str">"TRANSFER"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,'$.data[0].target_account')" title="$.data[0].target_account"><span class="jt-key">"target_account"</span>: <span class="jt-str">"IT60X..."</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,'$.data[0].prev_balance')" title="$.data[0].prev_balance"><span class="jt-key">"prev_balance"</span>: <span class="jt-num">5000.00</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,'$.data[0].new_balance')" title="$.data[0].new_balance"><span class="jt-key">"new_balance"</span>: <span class="jt-num">3500.00</span></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" onclick="this.classList.toggle('sel')"><span class="jt-key">"id"</span>: <span class="jt-str">"TXN001"</span></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" onclick="this.classList.toggle('sel')"><span class="jt-key">"timestamp"</span>: <span class="jt-str">"2024-06-14T14:30Z"</span></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" onclick="this.classList.toggle('sel')"><span class="jt-key">"amount"</span>: <span class="jt-num">1500.00</span></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" onclick="this.classList.toggle('sel')"><span class="jt-key">"user_name"</span>: <span class="jt-str">"mario.rossi"</span></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" onclick="this.classList.toggle('sel')"><span class="jt-key">"src_ip"</span>: <span class="jt-str">"10.0.1.55"</span></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" onclick="this.classList.toggle('sel')"><span class="jt-key">"operation"</span>: <span class="jt-str">"TRANSFER"</span></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" onclick="this.classList.toggle('sel')"><span class="jt-key">"target_account"</span>: <span class="jt-str">"IT60X054..."</span></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" onclick="this.classList.toggle('sel')"><span class="jt-key">"prev_balance"</span>: <span class="jt-num">5000.00</span></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" onclick="this.classList.toggle('sel')"><span class="jt-key">"new_balance"</span>: <span class="jt-num">3500.00</span></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" onclick="this.classList.toggle('sel')"><span class="jt-key">"src_ip"</span>: <span class="jt-str">"10.0.1.55"</span></span><br>
+            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" onclick="this.classList.toggle('sel')"><span class="jt-key">"geo.city"</span>: <span class="jt-str">"Roma"</span></span><br>
             &nbsp;&nbsp;}<br>
-            ]<br>
-            <span class="jt-key">"next_page"</span>: <span class="jt-num">2</span>
+            ]
           </div>
-          <div style="margin:10px 14px 14px;font-size:12px;color:var(--splunk-muted)">
-            💡 Clicca su un campo per aggiungerlo automaticamente al parsing (Step 4).
+          <div class="help" style="margin-top:6px">✅ Campi selezionati in blu · provengono dalla chain arricchita</div>
+        </div>
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:8px">Array radice</div>
+          <div class="fg"><input class="fc" value="$.data[*]"/><div class="help">JSONPath all'array principale.</div></div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin:14px 0 8px">Campi estratti</div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <div style="display:flex;align-items:center;gap:6px;background:var(--th);border:1px solid var(--border);border-radius:3px;padding:6px 10px"><code style="flex:1;font-size:11px;color:#1565c0">$.data[*].id</code><span style="color:var(--muted)">→</span><span style="font-size:12px;flex:1">id</span></div>
+            <div style="display:flex;align-items:center;gap:6px;background:var(--th);border:1px solid var(--border);border-radius:3px;padding:6px 10px"><code style="flex:1;font-size:11px;color:#1565c0">$.data[*].timestamp</code><span style="color:var(--muted)">→</span><span style="font-size:12px;flex:1">timestamp</span></div>
+            <div style="display:flex;align-items:center;gap:6px;background:var(--th);border:1px solid var(--border);border-radius:3px;padding:6px 10px"><code style="flex:1;font-size:11px;color:#1565c0">$.data[*].user_name</code><span style="color:var(--muted)">→</span><span style="font-size:12px;flex:1">user_name</span></div>
+            <div style="display:flex;align-items:center;gap:6px;background:var(--th);border:1px solid var(--border);border-radius:3px;padding:6px 10px"><code style="flex:1;font-size:11px;color:#1565c0">$.data[*].operation</code><span style="color:var(--muted)">→</span><span style="font-size:12px;flex:1">operation</span></div>
+            <div style="display:flex;align-items:center;gap:6px;background:var(--th);border:1px solid var(--border);border-radius:3px;padding:6px 10px"><code style="flex:1;font-size:11px;color:#1565c0">$.data[*].src_ip</code><span style="color:var(--muted)">→</span><span style="font-size:12px;flex:1">src_ip</span></div>
+            <div style="display:flex;align-items:center;gap:6px;background:var(--th);border:1px solid var(--border);border-radius:3px;padding:6px 10px"><code style="flex:1;font-size:11px;color:#1565c0">$.data[*].geo.city</code><span style="color:var(--muted)">→</span><span style="font-size:12px;flex:1">city (arricchito)</span></div>
           </div>
+          <button class="btn btn-default btn-sm" style="margin-top:8px" onclick="alert('Demo: aggiungi campo manuale.')">+ Campo manuale</button>
+          <div class="divider"></div>
+          <div class="fg"><label class="fl">Formato risposta</label><select class="fc w-lg"><option selected>JSON</option><option>CSV</option><option>TSV</option><option>XML</option><option>HTML (table extract)</option><option>Testo + regex</option></select></div>
         </div>
       </div>
     </div>
   </div>
 
   <!-- STEP 4 -->
-  <div class="panel step-panel" id="sp-4">
+  <div class="panel step-panel" id="sp4">
     <div class="panel-body">
-      <div class="step-header">
-        <div class="step-title">Step 4 — Parsing risposta</div>
-        <div class="step-desc">Clicca i campi nel tree JSON o inserisci manualmente JSONPath / regex / colonna CSV.</div>
-      </div>
-      <div class="parsing-grid">
-        <div>
-          <div class="sec-title">Risposta — Tree interattivo</div>
-          <div class="json-tree" style="height:320px">
-            <span class="jt-key">"data"</span>: [<br>
-            &nbsp;&nbsp;{<br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" title="$.data[*].id"><span class="jt-key">"id"</span>: <span class="jt-str">"TXN001"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" title="$.data[*].timestamp"><span class="jt-key">"timestamp"</span>: <span class="jt-str">"2024-06-14T14:30:00Z"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf" title="$.data[*].amount"><span class="jt-key">"amount"</span>: <span class="jt-num">1500.00</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" title="$.data[*].user_id"><span class="jt-key">"user_id"</span>: <span class="jt-str">"U42"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" title="$.data[*].user_name"><span class="jt-key">"user_name"</span>: <span class="jt-str">"mario.rossi"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" title="$.data[*].src_ip"><span class="jt-key">"src_ip"</span>: <span class="jt-str">"10.0.1.55"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" title="$.data[*].operation"><span class="jt-key">"operation"</span>: <span class="jt-str">"TRANSFER"</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" title="$.data[*].target_account"><span class="jt-key">"target_account"</span>: <span class="jt-str">"IT60X..."</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" title="$.data[*].prev_balance"><span class="jt-key">"prev_balance"</span>: <span class="jt-num">5000.00</span></span><br>
-            &nbsp;&nbsp;&nbsp;&nbsp;<span class="jt-leaf sel" title="$.data[*].new_balance"><span class="jt-key">"new_balance"</span>: <span class="jt-num">3500.00</span></span><br>
-            &nbsp;&nbsp;}]
-          </div>
-          <div class="help-text mt8">✅ Campi selezionati evidenziati in blu</div>
-        </div>
-        <div>
-          <div class="sec-title">Array radice (record da iterare)</div>
-          <div class="form-group">
-            <input class="form-control w-xl" value="$.data[*]"/>
-            <div class="help-text">JSONPath all'array principale. Lascia vuoto se la risposta è già un array.</div>
-          </div>
-          <div class="sec-title mt16">Campi estratti</div>
-          <div class="field-row"><span class="fp">$.data[*].id</span><span class="arrow-sep">→</span><span class="fa">id</span></div>
-          <div class="field-row"><span class="fp">$.data[*].timestamp</span><span class="arrow-sep">→</span><span class="fa">timestamp</span></div>
-          <div class="field-row"><span class="fp">$.data[*].user_name</span><span class="arrow-sep">→</span><span class="fa">user_name</span></div>
-          <div class="field-row"><span class="fp">$.data[*].src_ip</span><span class="arrow-sep">→</span><span class="fa">src_ip</span></div>
-          <div class="field-row"><span class="fp">$.data[*].operation</span><span class="arrow-sep">→</span><span class="fa">operation</span></div>
-          <div class="field-row"><span class="fp">$.data[*].target_account</span><span class="arrow-sep">→</span><span class="fa">target_account</span></div>
-          <div class="field-row"><span class="fp">$.data[*].prev_balance</span><span class="arrow-sep">→</span><span class="fa">prev_balance</span></div>
-          <div class="field-row"><span class="fp">$.data[*].new_balance</span><span class="arrow-sep">→</span><span class="fa">new_balance</span></div>
-          <button class="btn btn-default btn-sm mt8" onclick="alert('Demo: aggiunge campo manuale.')">+ Campo manuale</button>
-          <div class="divider"></div>
-          <div class="sec-title">Formato risposta</div>
-          <select class="form-control w-lg"><option selected>JSON</option><option>CSV (con header)</option><option>TSV</option><option>XML</option><option>Testo libero (regex)</option></select>
-        </div>
+      <div class="step-header"><div class="step-title">Step 4 — Tracciato standard</div><div class="step-desc">Mappa i campi estratti al tracciato aziendale.</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:760px">
+        <div><label class="fl">time <span class="req">*</span></label><select class="fc"><option>timestamp</option></select><div class="help">Timestamp evento</div></div>
+        <div><label class="fl">hostname <span class="req">*</span></label><select class="fc"><option>— valore statico: erp.corp.it —</option></select></div>
+        <div><label class="fl">nomeapp <span class="req">*</span></label><select class="fc"><option>— valore statico: ERP_CORP —</option></select></div>
+        <div><label class="fl">tipoazione <span class="req">*</span></label><select class="fc"><option>operation</option></select></div>
+        <div><label class="fl">clientip</label><select class="fc"><option>src_ip</option></select></div>
+        <div><label class="fl">username</label><select class="fc"><option>user_name</option></select></div>
+        <div><label class="fl">valorePrima</label><select class="fc"><option>prev_balance</option></select></div>
+        <div><label class="fl">valoreDP</label><select class="fc"><option>new_balance</option></select></div>
+        <div><label class="fl">target</label><select class="fc"><option>target_account</option></select></div>
+        <div><label class="fl">note</label><select class="fc"><option>— non mappato —</option></select></div>
       </div>
     </div>
   </div>
 
   <!-- STEP 5 -->
-  <div class="panel step-panel" id="sp-5">
+  <div class="panel step-panel" id="sp5">
     <div class="panel-body">
-      <div class="step-header">
-        <div class="step-title">Step 5 — Mapping tracciato standard</div>
-        <div class="step-desc">Associa i campi estratti al tracciato aziendale. I campi con * sono obbligatori.</div>
-      </div>
-      <div class="tracciato-grid">
-        <div class="t-row">
-          <div class="t-label">time <span class="req">*</span></div>
-          <select class="form-control"><option>$.data[*].timestamp → timestamp</option></select>
-          <div class="t-hint">Timestamp evento (epoch o ISO)</div>
-        </div>
-        <div class="t-row">
-          <div class="t-label">hostname <span class="req">*</span></div>
-          <select class="form-control"><option>— valore statico: erp.corp.it —</option></select>
-          <div class="t-hint">Host sorgente evento</div>
-        </div>
-        <div class="t-row">
-          <div class="t-label">nomeapp <span class="req">*</span></div>
-          <select class="form-control"><option>— valore statico: ERP_CORP —</option></select>
-          <div class="t-hint">Nome applicazione sorgente</div>
-        </div>
-        <div class="t-row">
-          <div class="t-label">tipoazione <span class="req">*</span></div>
-          <select class="form-control"><option>$.data[*].operation → operation</option></select>
-          <div class="t-hint">Tipo di azione (login, logout, …)</div>
-        </div>
-        <div class="t-row">
-          <div class="t-label">clientip</div>
-          <select class="form-control"><option>$.data[*].src_ip → src_ip</option></select>
-          <div class="t-hint">IP del client</div>
-        </div>
-        <div class="t-row">
-          <div class="t-label">username</div>
-          <select class="form-control"><option>$.data[*].user_name → user_name</option></select>
-          <div class="t-hint">Utente coinvolto</div>
-        </div>
-        <div class="t-row">
-          <div class="t-label">tipooperazione</div>
-          <select class="form-control"><option>— non mappato —</option></select>
-          <div class="t-hint">Tipo operazione specifica</div>
-        </div>
-        <div class="t-row">
-          <div class="t-label">valorePrima</div>
-          <select class="form-control"><option>$.data[*].prev_balance → prev_balance</option></select>
-          <div class="t-hint">Valore prima della modifica</div>
-        </div>
-        <div class="t-row">
-          <div class="t-label">valoreDP</div>
-          <select class="form-control"><option>$.data[*].new_balance → new_balance</option></select>
-          <div class="t-hint">Valore dopo la modifica</div>
-        </div>
-        <div class="t-row">
-          <div class="t-label">target</div>
-          <select class="form-control"><option>$.data[*].target_account → target_account</option></select>
-          <div class="t-hint">Oggetto/risorsa target</div>
-        </div>
-        <div class="t-row">
-          <div class="t-label">note</div>
-          <select class="form-control"><option>— non mappato —</option></select>
-          <div class="t-hint">Note aggiuntive libere</div>
-        </div>
-      </div>
+      <div class="step-header"><div class="step-title">Step 5 — Output</div></div>
+      <div class="fg"><label class="fl">Index<span class="req">*</span></label><select class="fc w-xl"><option selected>finance</option><option>main</option><option>security</option></select></div>
+      <div class="fg"><label class="fl">Sourcetype<span class="req">*</span></label><input class="fc w-xl" value="api_connect:erp_transactions"/></div>
+      <div class="fg"><label class="fl">Source<span class="req">*</span></label><input class="fc w-xl" value="https://erp.corp.it/rest/txn"/></div>
+      <div class="fg"><label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" checked/> Checkpoint dedup su campo <code>timestamp</code></label></div>
     </div>
   </div>
 
   <!-- STEP 6 -->
-  <div class="panel step-panel" id="sp-6">
+  <div class="panel step-panel" id="sp6">
     <div class="panel-body">
-      <div class="step-header">
-        <div class="step-title">Step 6 — Destinazione output</div>
-        <div class="step-desc">Index, sourcetype e source dove inviare gli eventi raccolti.</div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Index<span class="req">*</span></label>
-        <select class="form-control w-xl">
-          <option>main</option><option selected>finance</option><option>security</option><option>network</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Sourcetype<span class="req">*</span></label>
-        <input class="form-control w-xl" value="api_connect:erp_transactions"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Source<span class="req">*</span></label>
-        <input class="form-control w-xl" value="https://erp.corp.it/rest/txn"/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Host</label>
-        <input class="form-control w-xl" placeholder="Lascia vuoto per usare l'hostname del HF"/>
-      </div>
-      <div class="divider"></div>
-      <div class="form-group">
-        <label class="form-label">Checkpoint dedup</label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-          <input type="checkbox" checked onchange="document.getElementById('cp-detail').style.display=this.checked?'block':'none'"/>
-          Abilita checkpoint basato su un campo timestamp / ID
-        </label>
-      </div>
-      <div id="cp-detail" class="form-group">
-        <label class="form-label">Campo checkpoint</label>
-        <input class="form-control w-lg" value="timestamp"/>
-        <div class="help-text">Lo script evita di reinviare eventi già processati.</div>
-      </div>
+      <div class="step-header"><div class="step-title">Step 6 — Logger</div></div>
+      <div class="fg"><label class="fl">Source logger<span class="req">*</span></label><input class="fc w-xl" value="api_connect:erp_transactions:runner"/><div class="help"><code>index=_internal sourcetype=custom_script_logger source=api_connect:erp_transactions:runner</code></div></div>
     </div>
   </div>
 
   <!-- STEP 7 -->
-  <div class="panel step-panel" id="sp-7">
+  <div class="panel step-panel" id="sp7">
     <div class="panel-body">
-      <div class="step-header">
-        <div class="step-title">Step 7 — Logger di esecuzione</div>
-        <div class="step-desc">I log di esecuzione dello script vanno a <code>index=_internal sourcetype=custom_script_logger</code>.</div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Source del logger<span class="req">*</span></label>
-        <input class="form-control w-xl" value="api_connect:erp_transactions:runner"/>
-        <div class="help-text">
-          Ricercabile con: <code>index=_internal sourcetype=custom_script_logger source=api_connect:erp_transactions:runner</code>
-        </div>
-      </div>
-      <div class="divider"></div>
-      <div class="summary-box">
-        <div style="font-size:13px;font-weight:700;margin-bottom:12px">📋 Riepilogo configurazione</div>
-        <div class="summary-grid">
+      <div class="step-header"><div class="step-title">Step 7 — Riepilogo e generazione</div></div>
+      <div style="background:var(--th);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px">
+        <div style="font-weight:700;margin-bottom:10px">📋 Configurazione</div>
+        <div class="sum-grid">
           <span class="sk">Nome input</span><span class="sv">api_erp_transactions</span>
-          <span class="sk">Auth</span><span class="sv">API Key Header (X-API-Key)</span>
-          <span class="sk">Credenziale</span><span class="sv">api_connect:api_key:erp_prod</span>
-          <span class="sk">Endpoint</span><span class="sv">https://erp.corp.it/rest/txn</span>
-          <span class="sk">Metodo</span><span class="sv">GET</span>
-          <span class="sk">Chiamate</span><span class="sv">2 (cascata)</span>
-          <span class="sk">Paginazione</span><span class="sv">offset (page=N, max 100)</span>
-          <span class="sk">Schedule</span><span class="sv">*/10 * * * * (ogni 10 min)</span>
-          <span class="sk">Formato</span><span class="sv">JSON → $.data[*]</span>
-          <span class="sk">Campi estratti</span><span class="sv">8</span>
-          <span class="sk">Tracciato mappato</span><span class="sv">9 / 11</span>
+          <span class="sk">Auth globale</span><span class="sv">OAuth2 CC (erp_prod)</span>
+          <span class="sk">Chiamate</span><span class="sv">2 (cascata + join su "id")</span>
+          <span class="sk">Call 1 auth</span><span class="sv">inherited (OAuth2 CC)</span>
+          <span class="sk">Call 2 auth</span><span class="sv">API Key Header override</span>
+          <span class="sk">Call 2 error policy</span><span class="sv">404 → skip record</span>
+          <span class="sk">Paginazione</span><span class="sv">Nessuna</span>
+          <span class="sk">Schedule</span><span class="sv">*/10 * * * *</span>
+          <span class="sk">Campi estratti</span><span class="sv">9 (inclusi 3 da call 2)</span>
+          <span class="sk">Tracciato</span><span class="sv">9/11 mappati</span>
           <span class="sk">Index</span><span class="sv">finance</span>
-          <span class="sk">Sourcetype</span><span class="sv">api_connect:erp_transactions</span>
-          <span class="sk">Logger source</span><span class="sv">api_connect:erp_transactions:runner</span>
+          <span class="sk">Logger</span><span class="sv">api_connect:erp_transactions:runner</span>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Wizard nav -->
-  <div class="wizard-nav">
+  <!-- wizard nav -->
+  <div class="wiz-nav">
     <button class="btn btn-default" id="btn-prev" onclick="wizNav(-1)" disabled>‹ Precedente</button>
     <div class="wn-center"><span id="step-ind">Step 1 di 7</span></div>
     <div class="wn-right">
-      <button class="btn btn-default btn-sm" onclick="alert('Demo: bozza salvata nel KV Store.')">💾 Salva bozza</button>
+      <button class="btn btn-default btn-sm" onclick="alert('Demo: bozza salvata.')">💾 Bozza</button>
       <button class="btn btn-primary" id="btn-next" onclick="wizNav(1)">Successivo ›</button>
-      <button class="btn btn-success" id="btn-gen" style="display:none" onclick="showGenModal()">✓ Genera input</button>
+      <button class="btn btn-success" id="btn-gen" style="display:none" onclick="showGen()">✓ Genera input</button>
     </div>
   </div>
 </div>
 
-<!-- ================================================================
-     PAGE 3: CREDENTIAL MANAGER
-     ================================================================ -->
+<!-- ═══════════════════════════ CREDENTIALS ═══════════════════════════ -->
 <div class="page" id="page-credentials">
-  <div class="page-header">
-    <div>
-      <div class="page-title">Credential Manager</div>
-      <div class="page-sub">Gestione sicura delle credenziali tramite password.conf di Splunk</div>
-    </div>
-    <button class="btn btn-primary" onclick="document.getElementById('modal-newcred').style.display='flex'">+ Nuova credenziale</button>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div><div style="font-size:18px;font-weight:700">Credential Manager</div><div style="font-size:13px;color:var(--muted)">CRUD su password.conf via /storage/passwords</div></div>
+    <button class="btn btn-primary" onclick="document.getElementById('modal-cred').style.display='flex'">+ Nuova credenziale</button>
   </div>
-
-  <div class="info-banner">
-    🔒 Le credenziali sono salvate cifrate in <strong>password.conf</strong> tramite le API native di Splunk
-    (<code>/storage/passwords</code>). Nessun valore in chiaro viene mai scritto su disco o trasmesso al browser.
-  </div>
-
+  <div class="info-banner">🔒 Credenziali salvate cifrate in <strong>password.conf</strong> — nessun secret in chiaro nel browser.</div>
   <div class="panel">
     <div class="panel-header"><span class="panel-title">Credenziali configurate</span></div>
     <div style="overflow-x:auto">
-      <table class="splunk-table">
-        <thead>
-          <tr>
-            <th>Realm</th><th>Username / Label</th><th>Tipo</th><th>App</th><th>Ultima modifica</th><th>Azioni</th>
-          </tr>
-        </thead>
+      <table class="t">
+        <thead><tr><th>Realm</th><th>Username</th><th>Tipo</th><th>App</th><th>Ultima modifica</th><th>Azioni</th></tr></thead>
         <tbody>
-          <tr>
-            <td><code>api_connect:bearer:idp_prod</code></td>
-            <td>svc_splunk</td>
-            <td><span class="badge badge-info">Bearer Token</span></td>
-            <td>api_connect</td>
-            <td>2024-06-10 09:15</td>
-            <td><div class="btn-group">
-              <button class="btn btn-default btn-sm" onclick="alert('Demo: apertura form modifica credenziale.')">✏ Modifica</button>
-              <button class="btn btn-default btn-sm" onclick="alert('Demo: conferma eliminazione credenziale.')">🗑</button>
-            </div></td>
-          </tr>
-          <tr>
-            <td><code>api_connect:basic:hr_api</code></td>
-            <td>hr_reader</td>
-            <td><span class="badge badge-info">Basic Auth</span></td>
-            <td>api_connect</td>
-            <td>2024-06-08 14:30</td>
-            <td><div class="btn-group">
-              <button class="btn btn-default btn-sm" onclick="alert('Demo: apertura form modifica credenziale.')">✏ Modifica</button>
-              <button class="btn btn-default btn-sm" onclick="alert('Demo: conferma eliminazione.')">🗑</button>
-            </div></td>
-          </tr>
-          <tr>
-            <td><code>api_connect:api_key:erp_prod</code></td>
-            <td>erp_service</td>
-            <td><span class="badge badge-info">API Key</span></td>
-            <td>api_connect</td>
-            <td>2024-06-12 11:00</td>
-            <td><div class="btn-group">
-              <button class="btn btn-default btn-sm" onclick="alert('Demo: apertura form modifica credenziale.')">✏ Modifica</button>
-              <button class="btn btn-default btn-sm" onclick="alert('Demo: conferma eliminazione.')">🗑</button>
-            </div></td>
-          </tr>
-          <tr>
-            <td><code>api_connect:oauth2_cc:fw_api</code></td>
-            <td>fw_client</td>
-            <td><span class="badge badge-info">OAuth2 CC</span></td>
-            <td>api_connect</td>
-            <td>2024-06-13 16:45</td>
-            <td><div class="btn-group">
-              <button class="btn btn-default btn-sm" onclick="alert('Demo: apertura form modifica credenziale.')">✏ Modifica</button>
-              <button class="btn btn-default btn-sm" onclick="alert('Demo: conferma eliminazione.')">🗑</button>
-            </div></td>
-          </tr>
+          <tr><td><code>api_connect:oauth2_cc:erp_prod</code></td><td>erp_client</td><td><span class="badge b-info">OAuth2 CC</span></td><td>api_connect</td><td>2024-06-12</td><td><div class="btn-group"><button class="btn btn-default btn-sm" onclick="alert('Demo: modifica.')">✏</button><button class="btn btn-default btn-sm">🗑</button></div></td></tr>
+          <tr><td><code>api_connect:api_key:erp_detail</code></td><td>detail_svc</td><td><span class="badge b-info">API Key</span></td><td>api_connect</td><td>2024-06-13</td><td><div class="btn-group"><button class="btn btn-default btn-sm" onclick="alert('Demo: modifica.')">✏</button><button class="btn btn-default btn-sm">🗑</button></div></td></tr>
+          <tr><td><code>api_connect:bearer:idp_prod</code></td><td>svc_splunk</td><td><span class="badge b-info">Bearer</span></td><td>api_connect</td><td>2024-06-10</td><td><div class="btn-group"><button class="btn btn-default btn-sm" onclick="alert('Demo: modifica.')">✏</button><button class="btn btn-default btn-sm">🗑</button></div></td></tr>
+          <tr><td><code>api_connect:basic:hr_api</code></td><td>hr_reader</td><td><span class="badge b-info">Basic</span></td><td>api_connect</td><td>2024-06-08</td><td><div class="btn-group"><button class="btn btn-default btn-sm" onclick="alert('Demo: modifica.')">✏</button><button class="btn btn-default btn-sm">🗑</button></div></td></tr>
         </tbody>
       </table>
     </div>
   </div>
 </div>
 
-<!-- ============ MODALS ============ -->
+<!-- ═══ MODALS ═══ -->
+<div class="modal-overlay" id="modal-del" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal"><div class="modal-head"><div class="modal-title">Conferma eliminazione</div></div>
+  <div class="modal-body"><p>Eliminare <strong id="del-name"></strong>?</p><div class="modal-warn">⚠ Rimuoverà script e stanza inputs.conf.</div></div>
+  <div class="modal-foot"><button class="btn btn-default" onclick="document.getElementById('modal-del').style.display='none'">Annulla</button><button class="btn btn-danger" onclick="document.getElementById('modal-del').style.display='none';alert('Demo: eliminato.')">Elimina</button></div></div>
+</div>
 
-<!-- New credential -->
-<div class="modal-overlay" id="modal-newcred" style="display:none" onclick="if(event.target===this)this.style.display='none'">
-  <div class="modal">
-    <div class="modal-head"><div class="modal-title">Nuova credenziale</div></div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">Tipo<span class="req">*</span></label>
-        <select class="form-control w-xl" onchange="toggleCredFields(this.value)">
-          <option value="bearer">Bearer Token</option>
-          <option value="basic">Basic Auth</option>
-          <option value="api_key">API Key</option>
-          <option value="oauth2_cc">OAuth2 Client Credentials</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Label / Realm<span class="req">*</span></label>
-        <input class="form-control w-xl" placeholder="es. prod_auth_api"/>
-        <div class="help-text">Sarà salvato come <code>api_connect:&lt;tipo&gt;:&lt;label&gt;</code></div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Username / Client ID<span class="req">*</span></label>
-        <input class="form-control w-xl" placeholder=""/>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Password / Token / Secret<span class="req">*</span></label>
-        <div class="flex-row">
-          <input type="password" class="form-control w-xl" placeholder=""/>
-          <button class="btn btn-default btn-sm" onclick="togglePw(this)">👁</button>
-        </div>
-        <div class="help-text">Salvato cifrato. Non sarà mai visualizzato in chiaro dopo il salvataggio.</div>
-      </div>
-      <div id="oauth2-extra" style="display:none">
-        <div class="form-group">
-          <label class="form-label">Token URL<span class="req">*</span></label>
-          <input class="form-control w-xl" placeholder="https://auth.example.com/oauth/token"/>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Scope</label>
-          <input class="form-control w-xl" placeholder="read write"/>
-        </div>
-      </div>
+<div class="modal-overlay" id="modal-cred" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal"><div class="modal-head"><div class="modal-title">Nuova credenziale</div></div>
+  <div class="modal-body">
+    <div class="fg"><label class="fl">Tipo<span class="req">*</span></label><select class="fc w-xl" onchange="document.getElementById('oauth2-extra').style.display=this.value==='oauth2_cc'?'block':'none'"><option value="bearer">Bearer Token</option><option value="basic">Basic Auth</option><option value="api_key">API Key</option><option value="oauth2_cc">OAuth2 CC</option></select></div>
+    <div class="fg"><label class="fl">Label/Realm<span class="req">*</span></label><input class="fc w-xl" placeholder="es. prod_erp_api"/></div>
+    <div class="fg"><label class="fl">Username/Client ID<span class="req">*</span></label><input class="fc w-xl"/></div>
+    <div class="fg"><label class="fl">Password/Token/Secret<span class="req">*</span></label><div style="display:flex;gap:6px;max-width:520px"><input type="password" class="fc" id="pw-inp"/><button class="btn btn-default btn-sm" onclick="var i=document.getElementById('pw-inp');i.type=i.type==='password'?'text':'password'">👁</button></div></div>
+    <div id="oauth2-extra" style="display:none">
+      <div class="fg"><label class="fl">Token URL<span class="req">*</span></label><input class="fc w-xl" placeholder="https://auth.example.com/oauth/token"/></div>
+      <div class="fg"><label class="fl">Scope</label><input class="fc w-xl" placeholder="read write"/></div>
     </div>
-    <div class="modal-foot">
-      <button class="btn btn-default" onclick="document.getElementById('modal-newcred').style.display='none'">Annulla</button>
-      <button class="btn btn-primary" onclick="document.getElementById('modal-newcred').style.display='none';alert('Demo: credenziale salvata in password.conf.')">✓ Salva</button>
-    </div>
+  </div>
+  <div class="modal-foot"><button class="btn btn-default" onclick="document.getElementById('modal-cred').style.display='none'">Annulla</button><button class="btn btn-primary" onclick="document.getElementById('modal-cred').style.display='none';alert('Demo: credenziale salvata in password.conf.')">✓ Salva</button></div>
   </div>
 </div>
 
-<!-- Delete input confirm -->
-<div class="modal-overlay" id="modal-delete" style="display:none" onclick="if(event.target===this)this.style.display='none'">
-  <div class="modal">
-    <div class="modal-head"><div class="modal-title">Conferma eliminazione</div></div>
-    <div class="modal-body">
-      <p>Vuoi eliminare l'input <strong id="del-name"></strong>?</p>
-      <div class="modal-warn">
-        ⚠ Questa operazione rimuoverà anche lo script generato e la stanza in <code>inputs.conf</code>.
-      </div>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-default" onclick="document.getElementById('modal-delete').style.display='none'">Annulla</button>
-      <button class="btn btn-danger" onclick="document.getElementById('modal-delete').style.display='none';alert('Demo: input eliminato.')">Elimina</button>
-    </div>
-  </div>
-</div>
-
-<!-- Generate result -->
 <div class="modal-overlay" id="modal-gen" style="display:none" onclick="if(event.target===this)this.style.display='none'">
-  <div class="modal modal-wide">
-    <div class="modal-head"><div class="modal-title">✅ Input generato con successo!</div></div>
-    <div class="modal-body">
-      <div class="gen-result">
-        <strong>Script creato e registrato</strong>
-        Script: <code>$SPLUNK_HOME/etc/apps/api_connect/bin/ac_input_api_erp_transactions.py</code><br>
-        Stanza: <code>script://$SPLUNK_HOME/etc/apps/api_connect/bin/ac_input_api_erp_transactions.py</code>
-      </div>
-      <pre class="code-block" style="max-height:260px">#!/usr/bin/env python3
-"""
-Modular Input generato da API Connect
-Input: api_erp_transactions
-"""
-import sys, os, json, time, logging, csv, io, re
-import urllib.request, urllib.parse, base64
-import splunklib.modularinput as smi
+  <div class="modal modal-wide"><div class="modal-head"><div class="modal-title">✅ Input generato con successo!</div></div>
+  <div class="modal-body">
+    <div class="gen-ok"><strong>Script creato e registrato</strong>Script: <code>$SPLUNK_HOME/etc/apps/api_connect/bin/ac_input_api_erp_transactions.py</code></div>
+    <pre class="code-block">#!/usr/bin/env python3
+# Modular Input generato da API Connect v2
+# Input: api_erp_transactions
 
 CONFIG = {
     "name": "api_erp_transactions",
-    "auth_type": "api_key_header",
-    "credential_realm": "api_connect:api_key:erp_prod",
-    "calls": [{"url": "https://erp.corp.it/rest/txn", "method": "GET", ...}],
-    "pagination_type": "offset",
-    "schedule": "*/10 * * * *",
-    "index": "finance",
-    "sourcetype": "api_connect:erp_transactions",
-    ...
+    "auth_type": "oauth2_cc",
+    "calls": [
+        {"id":1, "name":"Lista transazioni",
+         "url":"https://erp.corp.it/rest/txn",
+         "auth_type":"inherited", "error_policy":"retry_429"},
+        {"id":2, "name":"Dettaglio transazione",
+         "url":"https://erp.corp.it/rest/txn/{{id}}/details",
+         "auth_type":"api_key_header",           # ← auth override
+         "credential_realm":"api_connect:api_key:erp_detail",
+         "error_policy":"skip_404",              # ← 404 → skip
+         "join_key":"id"}                        # ← merge su id
+    ],
+    "field_mapping": {
+        "time":"timestamp", "hostname":"__static__:erp.corp.it",
+        "nomeapp":"__static__:ERP_CORP", "tipoazione":"operation",
+        "clientip":"src_ip", "username":"user_name",
+        "valorePrima":"prev_balance", "valoreDP":"new_balance",
+        "target":"target_account"
+    },
+    "index":"finance", "sourcetype":"api_connect:erp_transactions"
 }
 
 class APIConnectInput(smi.Script):
     def stream_events(self, inputs, ew):
-        # fetch → parse → map tracciato → write events
-        ...
-
-if __name__ == '__main__':
-    sys.exit(APIConnectInput().run(sys.argv))</pre>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-default" onclick="document.getElementById('modal-gen').style.display='none'">Chiudi</button>
-      <button class="btn btn-primary" onclick="document.getElementById('modal-gen').style.display='none';showPage('dashboard',document.querySelectorAll('.appnav-item')[0])">Vai alla Dashboard</button>
-    </div>
+        records = execute_chain(        # ← chain con join automatico
+            calls=CONFIG["calls"],
+            global_cfg=CONFIG,
+            session_key=session_key
+        )
+        for record in records:
+            ew.write_event(...)</pre>
+  </div>
+  <div class="modal-foot"><button class="btn btn-default" onclick="document.getElementById('modal-gen').style.display='none'">Chiudi</button><button class="btn btn-primary" onclick="document.getElementById('modal-gen').style.display='none';showPage('dashboard',document.querySelectorAll('.nav-item')[0])">Vai alla Dashboard</button></div>
   </div>
 </div>
 
-<div class="demo-badge">🔵 DEMO — API Connect v1.0</div>
+<div class="demo-badge">🔵 DEMO — API Connect v2</div>
 
 <script>
-// ---- Navigation ----
-function showPage(id, el) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.appnav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-  if (el) el.classList.add('active');
-  window.scrollTo(0, 0);
+/* ── Navigation ── */
+function showPage(id,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  if(el) el.classList.add('active');
+  window.scrollTo(0,0);
 }
 
-// ---- Wizard ----
-var wizStep = 1;
-var TOTAL = 7;
-
-function wizNav(dir) {
-  wizStep = Math.max(1, Math.min(TOTAL, wizStep + dir));
-  renderWizard();
-}
-
-function goStep(n) {
-  wizStep = n;
-  renderWizard();
-}
-
-function renderWizard() {
-  for (var i = 1; i <= TOTAL; i++) {
-    var sp = document.getElementById('sp-' + i);
-    if (sp) sp.classList.toggle('active', i === wizStep);
-    var ws = document.querySelector('.w-step[data-s="' + i + '"]');
-    if (ws) {
-      ws.classList.toggle('active', i === wizStep);
-      ws.classList.toggle('done', i < wizStep);
-    }
-    var wc = document.getElementById('wc-' + i);
-    if (wc) wc.classList.toggle('done', i < wizStep);
+/* ── Wizard ── */
+var wizStep=1, TOTAL=7;
+function wizNav(d){ wizStep=Math.max(1,Math.min(TOTAL,wizStep+d)); renderWiz(); }
+function goStep(n){ wizStep=n; renderWiz(); }
+function renderWiz(){
+  for(var i=1;i<=TOTAL;i++){
+    document.getElementById('sp'+i).classList.toggle('active',i===wizStep);
+    var ws=document.querySelector('.w-step[data-s="'+i+'"]');
+    if(ws){ws.classList.toggle('active',i===wizStep);ws.classList.toggle('done',i<wizStep);}
+    var wc=document.getElementById('wc'+i);
+    if(wc) wc.style.background=i<wizStep?'var(--success)':'var(--border)';
   }
-  document.getElementById('step-ind').textContent = 'Step ' + wizStep + ' di ' + TOTAL;
-  document.getElementById('btn-prev').disabled = wizStep === 1;
-  document.getElementById('btn-next').style.display = wizStep < TOTAL ? 'inline-flex' : 'none';
-  document.getElementById('btn-gen').style.display = wizStep === TOTAL ? 'inline-flex' : 'none';
+  document.getElementById('step-ind').textContent='Step '+wizStep+' di '+TOTAL;
+  document.getElementById('btn-prev').disabled=wizStep===1;
+  document.getElementById('btn-next').style.display=wizStep<TOTAL?'inline-flex':'none';
+  document.getElementById('btn-gen').style.display=wizStep===TOTAL?'inline-flex':'none';
 }
 
-// ---- Test simulation ----
-function simulateTest() {
-  var lbl = document.getElementById('test-status-lbl');
-  lbl.textContent = '⏳ Esecuzione in corso...';
-  lbl.style.color = 'var(--splunk-muted)';
-  setTimeout(function() {
-    document.getElementById('test-result').style.display = 'block';
-    lbl.textContent = '✅ Completato — HTTP 200';
-    lbl.style.color = 'var(--splunk-success)';
-  }, 900);
+/* ── Auth global toggle ── */
+function toggleAuthGlobal(v){
+  document.getElementById('fg-cred').style.display=v!=='none'?'block':'none';
+  document.getElementById('fg-oauth').style.display=v==='oauth2_cc'?'block':'none';
 }
 
-// ---- Tab switching ----
-function switchTab(id, btn) {
-  document.querySelectorAll('.r-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.r-panel').forEach(p => p.classList.remove('active'));
+/* ── CRON human ── */
+var CRON_MAP={'*/1 * * * *':'ogni 1 min','*/5 * * * *':'ogni 5 min','*/10 * * * *':'ogni 10 min','*/15 * * * *':'ogni 15 min','*/30 * * * *':'ogni 30 min','0 * * * *':'ogni ora','0 0 * * *':'ogni giorno'};
+function cronHuman(e){ return CRON_MAP[e.trim()]||e; }
+
+/* ── Chain Builder ── */
+var calls=[], callSeq=0, dragSrcId=null, lastFocused=null;
+
+var DEMO_CALLS=[
+  {id:1,name:'Lista transazioni',url:'https://erp.corp.it/rest/txn',method:'GET',headers:'{"Accept":"application/json"}',body:'',authType:'inherited',cred:'',policy:'retry_429',joinKey:'',resp:null},
+  {id:2,name:'Dettaglio transazione',url:'https://erp.corp.it/rest/txn/{{id}}/details',method:'GET',headers:'{}',body:'',authType:'api_key_header',cred:'api_connect:api_key:erp_detail',policy:'skip_404',joinKey:'id',resp:null},
+  {id:3,name:'Lookup utente HR',url:'https://hr-api.corp.it/v1/lookup',method:'POST',headers:'{}',body:'{"username":"{{user_name}}"}',authType:'basic',cred:'api_connect:basic:hr_api',policy:'skip_all_4xx',joinKey:'',resp:null}
+];
+
+var DEMO_RESPONSES={
+  1:{code:200,lat:'412 ms',vars:[{p:'id',s:'TXN001'},{p:'timestamp',s:'2024-06-14T14:30Z'},{p:'amount',s:'1500.00'},{p:'user_name',s:'mario.rossi'},{p:'operation',s:'TRANSFER'}],raw:'{"total":2,"data":[{"id":"TXN001","timestamp":"2024-06-14T14:30Z","amount":1500,"user_name":"mario.rossi","operation":"TRANSFER"}]}'},
+  2:{code:200,lat:'188 ms avg',vars:[{p:'src_ip',s:'10.0.1.55'},{p:'target_account',s:'IT60X054...'},{p:'prev_balance',s:'5000.00'},{p:'new_balance',s:'3500.00'},{p:'geo.city',s:'Roma'}],raw:'{"id":"TXN001","src_ip":"10.0.1.55","target_account":"IT60X054...","prev_balance":5000,"new_balance":3500,"geo":{"city":"Roma"}}'},
+  3:{code:401,lat:'401 Unauthorized',vars:[],raw:'{"error":"invalid_credentials","message":"Basic auth failed"}'}
+};
+
+var TREE_HTML={
+  1:'<span class="jt-key">"total"</span>: <span class="jt-num">2</span><br><span class="jt-key">"data"</span>: [{<br>&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,\'id\')"><span class="jt-key">"id"</span>: <span class="jt-str">"TXN001"</span></span><br>&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,\'timestamp\')"><span class="jt-key">"timestamp"</span>: <span class="jt-str">"2024-06-14T14:30Z"</span></span><br>&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,\'amount\')"><span class="jt-key">"amount"</span>: <span class="jt-num">1500.00</span></span><br>&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,\'user_name\')"><span class="jt-key">"user_name"</span>: <span class="jt-str">"mario.rossi"</span></span><br>&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,\'operation\')"><span class="jt-key">"operation"</span>: <span class="jt-str">"TRANSFER"</span></span><br>}]',
+  2:'<span class="jt-key">"id"</span>: <span class="jt-str">"TXN001"</span><br><span class="jt-leaf" onclick="selectLeaf(this,\'src_ip\')"><span class="jt-key">"src_ip"</span>: <span class="jt-str">"10.0.1.55"</span></span><br><span class="jt-leaf" onclick="selectLeaf(this,\'target_account\')"><span class="jt-key">"target_account"</span>: <span class="jt-str">"IT60X054..."</span></span><br><span class="jt-leaf" onclick="selectLeaf(this,\'prev_balance\')"><span class="jt-key">"prev_balance"</span>: <span class="jt-num">5000.00</span></span><br><span class="jt-leaf" onclick="selectLeaf(this,\'new_balance\')"><span class="jt-key">"new_balance"</span>: <span class="jt-num">3500.00</span></span><br><span class="jt-key">"geo"</span>: {<br>&nbsp;&nbsp;<span class="jt-leaf" onclick="selectLeaf(this,\'geo.city\')"><span class="jt-key">"city"</span>: <span class="jt-str">"Roma"</span></span><br>}',
+  3:'<span style="color:var(--error)"><span class="jt-key">"error"</span>: <span class="jt-str">"invalid_credentials"</span><br><span class="jt-key">"message"</span>: <span class="jt-str">"Basic auth failed"</span></span>'
+};
+
+function selectLeaf(el,p){ el.classList.toggle('sel'); }
+
+function renderChain(){
+  var area=document.getElementById('chain-area');
+  area.innerHTML='';
+  calls.forEach(function(c,i){
+    if(i>0) area.appendChild(buildConnector(c.id, i>0?calls[i-1]:null));
+    area.appendChild(buildCard(c));
+  });
+}
+
+function buildConnector(callId, prevCall){
+  var div=document.createElement('div');
+  div.className='connector';
+  div.id='conn-'+callId;
+  var prevVars=prevCall&&prevCall.resp&&prevCall.resp.vars||[];
+  var chips=prevVars.length
+    ?prevVars.map(function(v){return '<span class="vchip" data-var="{{'+v.p+'}}" title="Campione: '+v.s+'" onclick="insertVar(this.dataset.var)">{{'+v.p+'}}</span>';}).join('')
+    :'<span style="font-size:11px;color:var(--muted);font-style:italic">Esegui la call precedente per le variabili</span>';
+  div.innerHTML='<div class="conn-line"></div><div class="conn-body"><span class="conn-label">cascata — variabili disponibili</span><div class="var-chips" id="cv-'+callId+'">'+chips+'</div></div><div class="conn-line"></div>';
+  return div;
+}
+
+function buildCard(c){
+  var card=document.createElement('div');
+  card.className='call-card'+(c.resp?(c.resp.code>=200&&c.resp.code<300?' c-ok':' c-err'):'');
+  card.id='card-'+c.id; card.draggable=true;
+  card.dataset.callId=c.id;
+
+  var authOpts=['inherited','none','bearer','basic','api_key_header','api_key_query','oauth2_cc'].map(function(v){
+    return '<option value="'+v+'"'+(c.authType===v?' selected':'')+'>'+({inherited:'Ereditata (globale)',none:'Nessuna',bearer:'Bearer Token',basic:'Basic Auth',api_key_header:'API Key Header',api_key_query:'API Key Query',oauth2_cc:'OAuth2 CC'}[v]||v)+'</option>';
+  }).join('');
+  var policyOpts=['default','retry_429','skip_404','skip_all_4xx','stop_5xx','skip_all'].map(function(v){
+    return '<option value="'+v+'"'+(c.policy===v?' selected':'')+'>'+({default:'Default (stop)',retry_429:'429→retry 3×',skip_404:'404→skip',skip_all_4xx:'4xx→skip',stop_5xx:'5xx→stop',skip_all:'Tutto→skip'}[v]||v)+'</option>';
+  }).join('');
+
+  var respHtml='';
+  if(c.resp){
+    var codeCls=c.resp.code>=200&&c.resp.code<300?'b-2xx':c.resp.code>=500?'b-5xx':'b-4xx';
+    var treeHtml=TREE_HTML[c.id]||c.resp.raw;
+    var varsHtml=c.resp.vars&&c.resp.vars.length
+      ?'<div style="margin-bottom:6px;font-size:11px;color:var(--muted)">Clicca per inserire nel campo focalizzato</div>'+c.resp.vars.map(function(v){return '<span class="vchip" data-var="{{'+v.p+'}}" title="Campione: '+v.s+'" onclick="insertVar(this.dataset.var)">{{'+v.p+'}}</span> ';}).join('')
+      :'<span style="font-size:12px;color:var(--muted);font-style:italic">Nessuna variabile</span>';
+    respHtml='<div class="resp-hdr"><span class="resp-label">Risposta live</span><span class="badge '+codeCls+'">HTTP '+c.resp.code+'</span><span style="font-size:11px;color:var(--muted);margin-left:6px">'+c.resp.lat+'</span></div>'+
+      '<div class="resp-tabs"><button class="rtab active" onclick="switchRTab(this,\'rr-'+c.id+'\')">Raw</button><button class="rtab" onclick="switchRTab(this,\'rt-'+c.id+'\')">Tree</button><button class="rtab" onclick="switchRTab(this,\'rv-'+c.id+'\')">Variabili</button></div>'+
+      '<div id="rr-'+c.id+'" class="rpanel active"><pre class="rcode">'+escH(c.resp.raw)+'</pre></div>'+
+      '<div id="rt-'+c.id+'" class="rpanel"><div class="rcode" style="white-space:normal;line-height:1.7">'+treeHtml+'</div></div>'+
+      '<div id="rv-'+c.id+'" class="rpanel"><div class="rvars">'+varsHtml+'</div></div>';
+  } else {
+    respHtml='<div class="resp-hdr"><span class="resp-label">Risposta live</span><span class="badge b-none">—</span></div>'+
+      '<div class="rpanel active" style="display:block"><div class="rplaceholder">Premi ▶ Run per testare questa chiamata</div></div>';
+  }
+
+  card.innerHTML=
+    '<div class="call-hdr" onclick="toggleCard(\''+c.id+'\')">'+
+      '<span class="drag-handle" onclick="event.stopPropagation()" title="Trascina per riordinare">⠿</span>'+
+      '<div class="call-num">'+c.id+'</div>'+
+      '<input class="call-title-input" value="'+escH(c.name)+'" onclick="event.stopPropagation()" onchange="updateCallName('+c.id+',this.value)"/>'+
+      '<span class="mth m-'+c.method+'" id="mbadge-'+c.id+'">'+c.method+'</span>'+
+      '<span class="auth-tag'+(c.authType!=='inherited'?' ov':'')+'" id="atag-'+c.id+'">'+c.authType+'</span>'+
+      '<div class="status-dot'+(c.resp?c.resp.code>=200&&c.resp.code<300?' sd-ok':' sd-err':'')+'" id="dot-'+c.id+'"></div>'+
+      '<span class="call-lat'+(c.resp&&(c.resp.code<200||c.resp.code>=300)?' err':'')+'" id="lat-'+c.id+'">'+( c.resp?c.resp.lat:'')+'</span>'+
+      '<button class="btn btn-default btn-sm" onclick="event.stopPropagation();runCall('+c.id+')" style="margin-left:4px">▶ Run</button>'+
+      '<button class="btn btn-default btn-sm" onclick="event.stopPropagation();removeCall('+c.id+')" style="margin-left:2px">✕</button>'+
+      '<span class="chevron" id="chev-'+c.id+'">›</span>'+
+    '</div>'+
+    '<div class="call-body-wrap" id="cbw-'+c.id+'">'+
+      '<div class="call-left">'+
+        '<div class="cf-row"><span class="cf-label">URL *</span><input value="'+escH(c.url)+'" onchange="updateCallField('+c.id+',\'url\',this.value)" onfocus="lastFocused=this"/></div>'+
+        '<div class="cf-row"><span class="cf-label">Metodo</span><select onchange="updateMethod('+c.id+',this.value)">'+['GET','POST','PUT','PATCH','DELETE'].map(function(m){return '<option'+(m===c.method?' selected':'')+'>'+m+'</option>';}).join('')+'</select></div>'+
+        '<div class="cf-row"><span class="cf-label">Headers (JSON)</span><textarea rows="2" onfocus="lastFocused=this">'+escH(c.headers)+'</textarea></div>'+
+        '<div class="cf-row"><span class="cf-label">Body (POST/PUT)</span><textarea rows="2" placeholder=\'{"key":"{{var}}"}\'  onfocus="lastFocused=this">'+escH(c.body)+'</textarea></div>'+
+        '<div class="cf-row"><span class="cf-label">Auth override</span><select onchange="updateAuth('+c.id+',this.value)">'+authOpts+'</select></div>'+
+        (c.authType!=='inherited'&&c.authType!=='none'?'<div class="cf-row"><span class="cf-label">Credenziale</span><select><option>'+escH(c.cred||'— Seleziona —')+'</option></select></div>':'') +
+        '<div class="cf-row"><span class="cf-label">Error policy</span><select>'+policyOpts+'</select></div>'+
+        '<div class="cf-row"><span class="cf-label">Join su (chiave merge)</span><input value="'+escH(c.joinKey)+'" placeholder="id — vuoto per cascata semplice" onfocus="lastFocused=this"/></div>'+
+      '</div>'+
+      '<div class="call-right">'+respHtml+'</div>'+
+    '</div>';
+
+  card.addEventListener('dragstart',function(e){dragSrcId=c.id;card.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+  card.addEventListener('dragend',function(){card.classList.remove('dragging');document.querySelectorAll('.call-card').forEach(c=>c.classList.remove('drag-over'));});
+  card.addEventListener('dragover',function(e){e.preventDefault();if(c.id!==dragSrcId)card.classList.add('drag-over');});
+  card.addEventListener('dragleave',function(){card.classList.remove('drag-over');});
+  card.addEventListener('drop',function(e){e.preventDefault();card.classList.remove('drag-over');if(dragSrcId===c.id)return;reorderCalls(dragSrcId,c.id);});
+
+  return card;
+}
+
+function escH(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function toggleCard(id){
+  var b=document.getElementById('cbw-'+id);
+  var ch=document.getElementById('chev-'+id);
+  b.classList.toggle('collapsed');
+  ch.style.transform=b.classList.contains('collapsed')?'rotate(-90deg)':'rotate(0)';
+}
+function updateCallName(id,v){calls.find(c=>c.id===id).name=v;}
+function updateCallField(id,f,v){calls.find(c=>c.id===id)[f]=v;}
+function updateMethod(id,v){calls.find(c=>c.id===id).method=v;document.getElementById('mbadge-'+id).className='mth m-'+v;document.getElementById('mbadge-'+id).textContent=v;}
+function updateAuth(id,v){var c=calls.find(x=>x.id===id);c.authType=v;var tag=document.getElementById('atag-'+id);tag.textContent=v;tag.className='auth-tag'+(v!=='inherited'?' ov':'');}
+function removeCall(id){if(calls.length<=1){alert('Almeno una chiamata richiesta.');return;}calls=calls.filter(c=>c.id!==id);renderChain();}
+
+function addCall(){
+  callSeq++;
+  calls.push({id:callSeq,name:'Chiamata '+callSeq,url:'',method:'GET',headers:'{}',body:'',authType:'inherited',cred:'',policy:'default',joinKey:'',resp:null});
+  renderChain();
+}
+
+function runCall(id){
+  var c=calls.find(x=>x.id===id);
+  if(!c) return;
+  var dot=document.getElementById('dot-'+id);
+  var lat=document.getElementById('lat-'+id);
+  var card=document.getElementById('card-'+id);
+  dot.className='status-dot sd-run';
+  card.className='call-card c-run';
+  lat.textContent='…'; lat.className='call-lat';
+  var dr=DEMO_RESPONSES[id];
+  setTimeout(function(){
+    c.resp=dr;
+    renderChain();
+    updateConnectors();
+    /* update status text */
+    document.getElementById('run-status').textContent='Call '+id+': HTTP '+dr.code+(dr.code>=200&&dr.code<300?' ✅':' ❌');
+  },700+Math.random()*400);
+}
+
+function runAll(){
+  document.getElementById('run-status').textContent='Esecuzione in corso…';
+  calls.forEach(function(c,i){
+    setTimeout(function(){ runCall(c.id); },i*900);
+  });
+}
+
+function updateConnectors(){
+  calls.forEach(function(c,i){
+    if(i===0) return;
+    var prev=calls[i-1];
+    var el=document.getElementById('cv-'+c.id);
+    if(!el) return;
+    var vars=prev&&prev.resp&&prev.resp.vars||[];
+    el.innerHTML=vars.length
+      ?vars.map(function(v){return '<span class="vchip" data-var="{{'+v.p+'}}" title="'+v.s+'" onclick="insertVar(this.dataset.var)">{{'+v.p+'}}</span>';}).join('')
+      :'<span style="font-size:11px;color:var(--muted);font-style:italic">Nessuna variabile disponibile</span>';
+  });
+}
+
+function insertVar(v){
+  if(lastFocused){
+    var el=lastFocused; var s=el.selectionStart,e=el.selectionEnd;
+    var val=el.value; el.value=val.substring(0,s)+v+val.substring(e);
+    el.setSelectionRange(s+v.length,s+v.length); el.focus();
+  }
+}
+
+function switchRTab(btn,targetId){
+  var card=btn.closest('.call-card');
+  card.querySelectorAll('.rtab').forEach(t=>t.classList.remove('active'));
+  card.querySelectorAll('.rpanel').forEach(p=>p.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('rtab-' + id).classList.add('active');
+  document.getElementById(targetId).classList.add('active');
 }
 
-// ---- JSON leaf selection ----
-function selectLeaf(el, path) {
-  el.classList.toggle('sel');
-  // In real app: adds/removes from parsing fields list
+function reorderCalls(srcId,tgtId){
+  var si=calls.findIndex(c=>c.id===srcId), ti=calls.findIndex(c=>c.id===tgtId);
+  if(si<0||ti<0) return;
+  var tmp=calls.splice(si,1)[0]; calls.splice(ti,0,tmp);
+  renderChain();
 }
 
-// ---- Auth field toggles ----
-function toggleAuthFields(val) {
-  document.getElementById('fg-cred').style.display = (val && val !== '') ? 'block' : 'none';
-  document.getElementById('fg-apikey').style.display = (val === 'api_key_header' || val === 'api_key_query') ? 'block' : 'none';
-}
+/* ── Modal helpers ── */
+function showDel(name){document.getElementById('del-name').textContent=name;document.getElementById('modal-del').style.display='flex';}
+function showGen(){document.getElementById('modal-gen').style.display='flex';}
 
-function toggleCredFields(val) {
-  document.getElementById('oauth2-extra').style.display = val === 'oauth2_cc' ? 'block' : 'none';
-}
-
-function togglePw(btn) {
-  var inp = btn.previousElementSibling;
-  inp.type = inp.type === 'password' ? 'text' : 'password';
-}
-
-function showDeleteModal(name) {
-  document.getElementById('del-name').textContent = name;
-  document.getElementById('modal-delete').style.display = 'flex';
-}
-
-function showGenModal() {
-  document.getElementById('modal-gen').style.display = 'flex';
-}
+/* ── Init ── */
+calls=DEMO_CALLS.slice();
+callSeq=DEMO_CALLS.length;
+renderChain();
 </script>
 </body>
 </html>

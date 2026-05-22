@@ -1,13 +1,13 @@
 """
-ac_http.py
+ac_http.py  v2
 Client HTTP condiviso per tutti gli script generati da API Connect.
 
-Gestisce:
-- Autenticazione: Bearer, Basic, API Key (header/query), OAuth2 CC
-- Paginazione: offset, cursor, link-header
-- Parsing risposta: JSON, JSON array, CSV, TSV, XML, testo+regex
-- Retry con backoff esponenziale
-- Checkpoint dedup
+Novità v2:
+- auth per-call (ogni call della chain ha la sua auth indipendente)
+- enrichment join (merge campi call N+1 su record call N via chiave)
+- error policy per-call (retry 429, skip 4xx, stop 5xx)
+- normalizer esteso (HTML → BeautifulSoup-free text, XML nested flatten)
+- interpolazione {{var}} per cascata
 """
 
 import base64
@@ -25,16 +25,11 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 import splunklib.client as splunk_client
 
 
-# ──────────────────────────────────────────────
-# Auth
-# ──────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
+# Credential helpers
+# ────────────────────────────────────────────────────────────────
 
 def get_credential(realm: str, session_key: str) -> Tuple[str, str]:
-    """
-    Legge username e clear_password da password.conf tramite splunklib.
-    Il realm è nella forma  api_connect:<tipo>:<label>.
-    Restituisce (username, secret).  Se non trovato restituisce ('', '').
-    """
     if not realm or not session_key:
         return '', ''
     try:
@@ -42,7 +37,6 @@ def get_credential(realm: str, session_key: str) -> Tuple[str, str]:
         for pw in svc.storage_passwords:
             if pw.realm == realm:
                 uname = pw['username']
-                # Strip meta JSON prefix (usato per OAuth2 extra fields)
                 if '||' in uname:
                     uname = uname.split('||', 1)[1]
                 return uname, pw['clear_password']
@@ -54,7 +48,6 @@ def get_credential(realm: str, session_key: str) -> Tuple[str, str]:
 
 def get_oauth2_token(token_url: str, client_id: str, client_secret: str,
                      scope: str = '') -> str:
-    """Ottiene un access_token via OAuth2 Client Credentials flow."""
     data: Dict[str, str] = {'grant_type': 'client_credentials'}
     if scope:
         data['scope'] = scope
@@ -70,110 +63,306 @@ def get_oauth2_token(token_url: str, client_id: str, client_secret: str,
     )
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
-            payload = json.loads(resp.read())
-            return payload.get('access_token', '')
+            return json.loads(resp.read()).get('access_token', '')
     except Exception as e:
         import logging
         logging.getLogger('api_connect.ac_http').error('OAuth2 token error: %s', e)
         return ''
 
 
-def build_auth(cfg: Dict, session_key: str) -> Tuple[Dict[str, str], Dict[str, str]]:
+def _build_auth_headers(auth_type: str, username: str, secret: str,
+                         apikey_param: str = '', token_url: str = '',
+                         oauth_scope: str = '') -> Tuple[Dict, Dict]:
     """
-    Costruisce (headers, query_params) per il tipo di autenticazione configurato.
+    Restituisce (headers, query_params) per il tipo di auth dato.
     """
-    auth_type = cfg.get('auth_type', '')
-    realm = cfg.get('credential_realm', '')
-    username, secret = get_credential(realm, session_key)
-
     headers: Dict[str, str] = {}
-    params: Dict[str, str] = {}
-
+    params:  Dict[str, str] = {}
     if auth_type == 'bearer':
         headers['Authorization'] = f'Bearer {secret}'
     elif auth_type == 'basic':
-        token = base64.b64encode(f'{username}:{secret}'.encode()).decode()
-        headers['Authorization'] = f'Basic {token}'
+        tok = base64.b64encode(f'{username}:{secret}'.encode()).decode()
+        headers['Authorization'] = f'Basic {tok}'
     elif auth_type == 'api_key_header':
-        key_name = cfg.get('apikey_param', 'X-API-Key')
-        headers[key_name] = secret
+        headers[apikey_param or 'X-API-Key'] = secret
     elif auth_type == 'api_key_query':
-        key_name = cfg.get('apikey_param', 'api_key')
-        params[key_name] = secret
+        params[apikey_param or 'api_key'] = secret
     elif auth_type == 'oauth2_cc':
-        token_url = cfg.get('token_url', '')
-        scope = cfg.get('oauth_scope', '')
-        token = get_oauth2_token(token_url, username, secret, scope)
+        token = get_oauth2_token(token_url, username, secret, oauth_scope)
         if token:
             headers['Authorization'] = f'Bearer {token}'
-
     return headers, params
 
 
-# ──────────────────────────────────────────────
-# HTTP request with retry
-# ──────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
+# Per-call auth resolution
+# ────────────────────────────────────────────────────────────────
+
+def resolve_call_auth(call_cfg: Dict, global_cfg: Dict,
+                      session_key: str) -> Tuple[Dict, Dict]:
+    """
+    Risolve l'autenticazione per una singola call.
+    Se auth_type == 'inherited' usa la configurazione globale.
+    Altrimenti usa i parametri specifici della call.
+    """
+    auth_type = call_cfg.get('auth_type', 'inherited')
+
+    if auth_type == 'inherited':
+        auth_type    = global_cfg.get('auth_type', 'none')
+        realm        = global_cfg.get('credential_realm', '')
+        apikey_param = global_cfg.get('apikey_param', '')
+        token_url    = global_cfg.get('token_url', '')
+        oauth_scope  = global_cfg.get('oauth_scope', '')
+    else:
+        realm        = call_cfg.get('credential_realm', '')
+        apikey_param = call_cfg.get('apikey_param', '')
+        token_url    = call_cfg.get('token_url', '')
+        oauth_scope  = call_cfg.get('oauth_scope', '')
+
+    if auth_type in ('none', ''):
+        return {}, {}
+
+    username, secret = get_credential(realm, session_key)
+    return _build_auth_headers(auth_type, username, secret,
+                                apikey_param, token_url, oauth_scope)
+
+
+def build_auth(cfg: Dict, session_key: str) -> Tuple[Dict, Dict]:
+    """Compat: build auth from global config (used for single-call scripts)."""
+    dummy_call = {'auth_type': 'inherited'}
+    return resolve_call_auth(dummy_call, cfg, session_key)
+
+
+# ────────────────────────────────────────────────────────────────
+# Error policy
+# ────────────────────────────────────────────────────────────────
+
+class RetryableError(Exception):
+    def __init__(self, status_code: int, body: str):
+        self.status_code = status_code
+        self.body = body
+
+class SkippableError(Exception):
+    pass
+
+class FatalError(Exception):
+    pass
+
+
+def apply_error_policy(status_code: int, body: str, policy: str) -> str:
+    """
+    Applica la error policy al codice HTTP ricevuto.
+    Restituisce 'ok' se il codice è 2xx.
+    Altrimenti raise appropriato oppure restituisce 'skip'.
+
+    Policies:
+      default       → stop on any error
+      retry_429     → retry on 429, stop on others
+      skip_404      → skip on 404, stop on others
+      skip_all_4xx  → skip on 4xx, stop on 5xx
+      stop_5xx      → stop on 5xx, skip on 4xx
+      skip_all      → skip on any error
+    """
+    if 200 <= status_code < 300:
+        return 'ok'
+
+    if policy == 'retry_429' and status_code == 429:
+        raise RetryableError(status_code, body)
+    if policy == 'skip_404' and status_code == 404:
+        raise SkippableError()
+    if policy == 'skip_all_4xx' and 400 <= status_code < 500:
+        raise SkippableError()
+    if policy == 'stop_5xx' and status_code >= 500:
+        raise FatalError(f'HTTP {status_code}: {body[:200]}')
+    if policy == 'stop_5xx' and 400 <= status_code < 500:
+        raise SkippableError()
+    if policy == 'skip_all':
+        raise SkippableError()
+    # default: stop
+    raise FatalError(f'HTTP {status_code}: {body[:200]}')
+
+
+# ────────────────────────────────────────────────────────────────
+# HTTP request with retry + error policy
+# ────────────────────────────────────────────────────────────────
 
 def do_request(url: str, method: str, headers: Dict[str, str],
                body_data: Optional[bytes] = None,
                timeout: int = 60,
-               max_retries: int = 3) -> Tuple[str, int, str]:
+               max_retries: int = 3,
+               error_policy: str = 'default') -> Tuple[str, int, str]:
     """
-    Esegue una richiesta HTTP con retry e backoff esponenziale.
+    Esegue una richiesta HTTP con retry + backoff esponenziale.
+    Applica error_policy sul codice di risposta.
     Restituisce (body_str, status_code, content_type).
     """
     last_exc: Optional[Exception] = None
+
     for attempt in range(max_retries):
         if attempt > 0:
-            time.sleep(2 ** attempt)
+            wait = 2 ** attempt
+            import logging
+            logging.getLogger('api_connect.ac_http').info(
+                'Retry %d/%d dopo %ds (policy=%s)', attempt, max_retries, wait, error_policy)
+            time.sleep(wait)
         try:
-            req = urllib.request.Request(url, data=body_data, headers=headers, method=method)
+            req = urllib.request.Request(url, data=body_data,
+                                          headers=headers, method=method)
             with urllib.request.urlopen(req, timeout=timeout) as resp:
-                content_type = resp.headers.get('Content-Type', '')
-                raw = resp.read()
-                charset = _extract_charset(content_type)
-                return raw.decode(charset, errors='replace'), resp.status, content_type
+                ctype = resp.headers.get('Content-Type', '')
+                raw   = resp.read()
+                body  = raw.decode(_extract_charset(ctype), errors='replace')
+                apply_error_policy(resp.status, body, error_policy)
+                return body, resp.status, ctype
+
         except urllib.error.HTTPError as e:
-            content_type = e.headers.get('Content-Type', '')
-            raw = e.read()
-            charset = _extract_charset(content_type)
-            body = raw.decode(charset, errors='replace')
-            # Non ritentare su 4xx
-            if 400 <= e.code < 500:
-                return body, e.code, content_type
-            last_exc = e
+            ctype = e.headers.get('Content-Type', '')
+            raw   = e.read()
+            body  = raw.decode(_extract_charset(ctype), errors='replace')
+            result = apply_error_policy(e.code, body, error_policy)  # may raise
+            if result == 'ok':
+                return body, e.code, ctype
+            # RetryableError → loop again
+        except (RetryableError, SkippableError, FatalError):
+            raise
         except Exception as e:
             last_exc = e
 
-    raise RuntimeError(f'Request failed after {max_retries} attempts: {last_exc}')
+    raise FatalError(f'Request failed after {max_retries} attempts: {last_exc}')
 
 
-def _extract_charset(content_type: str) -> str:
-    if 'charset=' in content_type:
-        return content_type.split('charset=')[-1].split(';')[0].strip() or 'utf-8'
+def _extract_charset(ctype: str) -> str:
+    if 'charset=' in ctype:
+        return ctype.split('charset=')[-1].split(';')[0].strip() or 'utf-8'
     return 'utf-8'
 
 
-# ──────────────────────────────────────────────
-# Paginated fetch
-# ──────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
+# Chain execution (multi-call with per-call auth + enrichment join)
+# ────────────────────────────────────────────────────────────────
 
-def fetch_all_pages(call_cfg: Dict, auth_headers: Dict, auth_params: Dict,
-                    pagination_cfg: Dict) -> Iterator[Tuple[str, str]]:
+def execute_chain(calls: List[Dict], global_cfg: Dict,
+                  session_key: str,
+                  pagination_cfg: Optional[Dict] = None) -> List[Dict]:
     """
-    Generatore che itera su tutte le pagine e yield (body_str, content_type).
+    Esegue la catena di call e restituisce la lista finale di record arricchiti.
+
+    - Ogni call risolve la propria auth (inherited o override)
+    - Le variabili {{campo}} nell'URL/body vengono interpolate dal record corrente
+    - Se join_key è impostato, il risultato della call viene mergiato sul record
+      della call precedente usando quella chiave
+    - La paginazione si applica sull'ultima call della catena
     """
-    url = call_cfg.get('url', '')
-    method = call_cfg.get('method', 'GET').upper()
-    pagination_type = pagination_cfg.get('pagination_type', 'none')
+    logger = _get_logger()
+    pagination_cfg = pagination_cfg or {}
+
+    if not calls:
+        return []
+
+    # Prima call con paginazione → produce lista base di record
+    first_call = calls[0]
+    auth_h, auth_p = resolve_call_auth(first_call, global_cfg, session_key)
+    base_records = list(_fetch_paginated(
+        first_call, auth_h, auth_p,
+        pagination_cfg if len(calls) == 1 else {},
+        global_cfg
+    ))
+    logger.info('Call 1 (%s): %d record', first_call.get('url',''), len(base_records))
+
+    if len(calls) == 1:
+        return base_records
+
+    # Call successive: per ogni record della base, esegui le call rimanenti
+    enriched = []
+    for rec in base_records:
+        current = dict(rec)
+        for idx, call in enumerate(calls[1:], start=2):
+            call_auth_h, call_auth_p = resolve_call_auth(call, global_cfg, session_key)
+
+            url     = interpolate(call.get('url', ''), current)
+            method  = call.get('method', 'GET').upper()
+            policy  = call.get('error_policy', 'default')
+            join_key = call.get('join_key', '').strip()
+
+            extra_h: Dict[str, str] = {}
+            if call.get('headers'):
+                try:
+                    extra_h = json.loads(call['headers'])
+                except Exception:
+                    pass
+
+            headers = {
+                'User-Agent': 'Splunk-APIConnect/1.0',
+                'Accept': 'application/json, text/csv, */*',
+                **call_auth_h,
+                **extra_h,
+            }
+
+            body_data: Optional[bytes] = None
+            if method in ('POST', 'PUT', 'PATCH') and call.get('body'):
+                body_str = interpolate(call['body'], current)
+                body_data = body_str.encode('utf-8')
+                if 'Content-Type' not in headers:
+                    headers['Content-Type'] = 'application/json'
+
+            if call_auth_p:
+                sep = '&' if '?' in url else '?'
+                url = url + sep + urllib.parse.urlencode(call_auth_p)
+
+            try:
+                body, status, ctype = do_request(
+                    url, method, headers, body_data,
+                    error_policy=policy
+                )
+                sub_records = parse_response(body, ctype, global_cfg)
+
+                if join_key and sub_records:
+                    # Merge: trova il sub_record con join_key == current[join_key]
+                    cur_val = str(current.get(join_key, ''))
+                    matched = next(
+                        (r for r in sub_records if str(r.get(join_key, '')) == cur_val),
+                        sub_records[0]  # fallback: primo record
+                    )
+                    current.update(matched)
+                elif sub_records:
+                    # Nessun join: merge flat del primo sub_record
+                    current.update(sub_records[0])
+
+                logger.info('Call %d (%s): OK status=%d', idx, url, status)
+
+            except SkippableError:
+                logger.warning('Call %d (%s): skip (error_policy=%s)', idx, url, policy)
+                current['_ac_skip'] = True
+                break
+            except FatalError as fe:
+                logger.error('Call %d (%s): fatal — %s', idx, url, fe)
+                current['_ac_error'] = str(fe)
+                break
+
+        if not current.get('_ac_skip'):
+            enriched.append(current)
+
+    logger.info('Chain completata: %d record arricchiti', len(enriched))
+    return enriched
+
+
+def _fetch_paginated(call_cfg: Dict, auth_headers: Dict, auth_params: Dict,
+                     pagination_cfg: Dict, global_cfg: Dict) -> Iterator[Dict]:
+    """Itera su tutte le pagine di una singola call e yield record."""
+    url     = call_cfg.get('url', '')
+    method  = call_cfg.get('method', 'GET').upper()
+    policy  = call_cfg.get('error_policy', 'default')
+
+    pag_type   = pagination_cfg.get('pagination_type', 'none')
     page_param = pagination_cfg.get('page_param', 'page')
     cursor_path = pagination_cfg.get('cursor_path', '')
-    max_pages = int(pagination_cfg.get('max_pages', 100))
+    max_pages  = int(pagination_cfg.get('max_pages', 100))
+    array_root = pagination_cfg.get('array_root', global_cfg.get('array_root', ''))
 
-    extra_headers: Dict[str, str] = {}
+    extra_h: Dict[str, str] = {}
     if call_cfg.get('headers'):
         try:
-            extra_headers = json.loads(call_cfg['headers'])
+            extra_h = json.loads(call_cfg['headers'])
         except Exception:
             pass
 
@@ -181,7 +370,7 @@ def fetch_all_pages(call_cfg: Dict, auth_headers: Dict, auth_params: Dict,
         'User-Agent': 'Splunk-APIConnect/1.0',
         'Accept': 'application/json, text/csv, */*',
         **auth_headers,
-        **extra_headers,
+        **extra_h,
     }
 
     body_data: Optional[bytes] = None
@@ -190,61 +379,47 @@ def fetch_all_pages(call_cfg: Dict, auth_headers: Dict, auth_params: Dict,
         if 'Content-Type' not in headers:
             headers['Content-Type'] = 'application/json'
 
-    page = 0
+    page   = 0
     cursor = None
+    logger = _get_logger()
 
     while page < max_pages:
-        page_url = _build_page_url(url, pagination_type, page_param, page, cursor, auth_params)
+        page_url = _build_page_url(url, pag_type, page_param, page, cursor, auth_params)
 
-        body, status, ctype = do_request(page_url, method, headers, body_data)
-
-        if status < 200 or status >= 300:
-            import logging
-            logging.getLogger('api_connect.ac_http').error(
-                'HTTP %d from %s — stop pagination', status, page_url
-            )
+        try:
+            body, status, ctype = do_request(
+                page_url, method, headers, body_data, error_policy=policy)
+        except SkippableError:
+            logger.warning('Paginazione: skip a pagina %d', page)
+            break
+        except FatalError as fe:
+            logger.error('Paginazione: fatal a pagina %d — %s', page, fe)
             break
 
-        yield body, ctype
+        records, next_cursor = _parse_with_cursor(body, ctype, global_cfg, cursor_path)
+        for r in records:
+            yield r
 
-        if pagination_type == 'none':
+        if pag_type == 'none' or not records:
             break
-
-        # Determine next cursor / page
-        if pagination_type == 'offset':
-            try:
-                data = json.loads(body)
-                records = _extract_array(data, pagination_cfg.get('array_root', ''))
-                if not records:
-                    break
-                page += 1
-            except Exception:
+        if pag_type in ('offset', 'cursor'):
+            if not next_cursor and pag_type == 'cursor':
                 break
-
-        elif pagination_type == 'cursor':
-            try:
-                data = json.loads(body)
-                cursor = _jsonpath_single(data, cursor_path)
-                if not cursor:
-                    break
-                page += 1
-            except Exception:
-                break
-
-        elif pagination_type == 'link_header':
-            # Link header handled via response headers — simplified to single page
+            cursor = next_cursor
+            page  += 1
+        elif pag_type == 'link_header':
             break
         else:
             break
 
 
-def _build_page_url(base_url: str, pagination_type: str, page_param: str,
+def _build_page_url(base: str, pag_type: str, page_param: str,
                     page: int, cursor, auth_params: Dict) -> str:
-    url = base_url
+    url = base
     qs: Dict[str, str] = dict(auth_params)
-    if pagination_type == 'offset' and page > 0:
+    if pag_type == 'offset' and page > 0:
         qs[page_param] = str(page)
-    elif pagination_type == 'cursor' and cursor:
+    elif pag_type == 'cursor' and cursor:
         qs[page_param] = str(cursor)
     if qs:
         sep = '&' if '?' in url else '?'
@@ -252,39 +427,55 @@ def _build_page_url(base_url: str, pagination_type: str, page_param: str,
     return url
 
 
-# ──────────────────────────────────────────────
-# Response parsing
-# ──────────────────────────────────────────────
+def _parse_with_cursor(body: str, ctype: str,
+                        cfg: Dict, cursor_path: str) -> Tuple[List[Dict], Any]:
+    records = parse_response(body, ctype, cfg)
+    next_cursor = None
+    if cursor_path:
+        try:
+            data = json.loads(body)
+            next_cursor = _extract_array(data, cursor_path)
+        except Exception:
+            pass
+    return records, next_cursor
+
+
+# ────────────────────────────────────────────────────────────────
+# Response parsing — extended (HTML, XML nested, CSV, text+regex)
+# ────────────────────────────────────────────────────────────────
 
 def parse_response(body: str, content_type: str, cfg: Dict) -> List[Dict]:
-    """
-    Converte il body della risposta in una lista di record (dict).
-    Supporta JSON, JSON array, CSV, TSV, XML, testo + regex.
-    """
-    fmt = cfg.get('response_format', 'json')
+    fmt        = cfg.get('response_format', 'json')
     array_root = cfg.get('array_root', '')
 
-    # Detect CSV from content-type even if format is declared as json
-    if 'text/csv' in content_type or 'application/csv' in content_type:
+    # Content-type overrides
+    ct = content_type.lower()
+    if 'text/csv' in ct or 'application/csv' in ct:
         fmt = 'csv'
-    elif 'text/tab' in content_type:
+    elif 'text/tab' in ct:
         fmt = 'tsv'
+    elif 'text/html' in ct:
+        fmt = 'html'
+    elif 'text/xml' in ct or 'application/xml' in ct:
+        fmt = 'xml'
 
     if fmt in ('csv', 'tsv'):
         return _parse_csv(body, delimiter='\t' if fmt == 'tsv' else ',')
-
     if fmt == 'xml':
         return _parse_xml(body)
-
+    if fmt == 'html':
+        return _parse_html(body)
     if fmt == 'text':
-        pattern = cfg.get('text_regex', '')
-        return _parse_text(body, pattern)
+        return _parse_text(body, cfg.get('text_regex', ''))
 
-    # JSON (default)
+    # JSON
     try:
         data = json.loads(body)
     except json.JSONDecodeError:
-        # Fallback: try CSV
+        # Fallback attempts
+        stripped = body.strip()
+        if stripped.startswith('<'):
+            return _parse_xml(body)
         try:
             return _parse_csv(body)
         except Exception:
@@ -294,69 +485,144 @@ def parse_response(body: str, content_type: str, cfg: Dict) -> List[Dict]:
         data = _extract_array(data, array_root)
 
     if isinstance(data, list):
-        return [r if isinstance(r, dict) else {'value': r} for r in data]
+        return [_flatten(r) if isinstance(r, dict) else {'value': r} for r in data]
     if isinstance(data, dict):
-        return [data]
+        return [_flatten(data)]
     return [{'value': data}]
 
 
 def _parse_csv(body: str, delimiter: str = ',') -> List[Dict]:
     try:
-        reader = csv.DictReader(io.StringIO(body), delimiter=delimiter)
-        return [dict(row) for row in reader]
+        reader = csv.DictReader(io.StringIO(body.strip()), delimiter=delimiter)
+        rows = [dict(row) for row in reader]
+        if rows:
+            return rows
     except Exception:
-        # Fallback: split lines
-        lines = [l for l in body.splitlines() if l.strip()]
-        if not lines:
-            return []
-        headers = [h.strip() for h in lines[0].split(delimiter)]
-        records = []
-        for line in lines[1:]:
-            values = [v.strip() for v in line.split(delimiter)]
-            records.append(dict(zip(headers, values)))
-        return records
+        pass
+    # Fallback: manual split
+    lines = [l for l in body.splitlines() if l.strip()]
+    if not lines:
+        return []
+    headers = [h.strip() for h in lines[0].split(delimiter)]
+    result = []
+    for line in lines[1:]:
+        values = [v.strip() for v in line.split(delimiter)]
+        result.append(dict(zip(headers, values)))
+    return result
 
 
 def _parse_xml(body: str) -> List[Dict]:
-    """Parsing XML semplificato — converte ogni elemento foglia in un dict."""
     try:
         import xml.etree.ElementTree as ET
         root = ET.fromstring(body)
         records = []
-        for child in root:
-            record = {}
+        # Try to find a repeating element
+        children = list(root)
+        if not children:
+            return [{'raw': root.text or body}]
+        for child in children:
+            rec: Dict[str, Any] = {}
             for elem in child.iter():
+                tag = elem.tag.split('}')[-1]  # strip namespace
                 if elem.text and elem.text.strip():
-                    record[elem.tag.split('}')[-1]] = elem.text.strip()
-            if record:
-                records.append(record)
+                    if tag in rec:
+                        # Duplicate tag: append index
+                        i = 1
+                        while f'{tag}_{i}' in rec:
+                            i += 1
+                        rec[f'{tag}_{i}'] = elem.text.strip()
+                    else:
+                        rec[tag] = elem.text.strip()
+                # Include attributes
+                for attr_k, attr_v in elem.attrib.items():
+                    rec[f'{tag}_{attr_k}'] = attr_v
+            if rec:
+                records.append(rec)
         return records if records else [{'raw': body}]
-    except Exception:
+    except ET.ParseError:
         return [{'raw': body}]
 
 
+def _parse_html(body: str) -> List[Dict]:
+    """
+    Estrae testo da HTML senza dipendenze esterne.
+    Rimuove tag, script, style e restituisce righe di testo pulito.
+    Per strutture tabellari HTML cerca <table> e li converte.
+    """
+    # Try table extraction first
+    table_re = re.compile(r'<table[^>]*>(.*?)</table>', re.DOTALL | re.IGNORECASE)
+    tr_re     = re.compile(r'<tr[^>]*>(.*?)</tr>', re.DOTALL | re.IGNORECASE)
+    td_re     = re.compile(r'<t[dh][^>]*>(.*?)</t[dh]>', re.DOTALL | re.IGNORECASE)
+    tag_re    = re.compile(r'<[^>]+>')
+
+    def strip_tags(s: str) -> str:
+        return tag_re.sub('', s).strip()
+
+    tables = table_re.findall(body)
+    if tables:
+        records = []
+        for table_html in tables:
+            rows_html = tr_re.findall(table_html)
+            if not rows_html:
+                continue
+            headers = [strip_tags(h) for h in td_re.findall(rows_html[0])]
+            if not headers:
+                continue
+            for row_html in rows_html[1:]:
+                cells = [strip_tags(c) for c in td_re.findall(row_html)]
+                if cells:
+                    records.append(dict(zip(headers, cells)))
+        if records:
+            return records
+
+    # Fallback: plain text lines
+    clean = tag_re.sub(' ', body)
+    clean = re.sub(r'[ \t]+', ' ', clean)
+    lines = [l.strip() for l in clean.splitlines() if l.strip()]
+    return [{'line': l} for l in lines[:500]]
+
+
 def _parse_text(body: str, pattern: str) -> List[Dict]:
-    """Parsing testo libero con regex named groups."""
     if not pattern:
         return [{'raw': line} for line in body.splitlines() if line.strip()]
     try:
         compiled = re.compile(pattern)
-        records = []
+        records  = []
         for line in body.splitlines():
             m = compiled.search(line)
             if m:
-                record = m.groupdict() if m.groupdict() else {'match': m.group(0)}
-                records.append(record)
+                records.append(m.groupdict() if m.groupdict() else {'match': m.group(0), 'raw': line})
         return records
     except re.error:
         return [{'raw': line} for line in body.splitlines() if line.strip()]
 
 
-def _extract_array(data: Any, array_root: str) -> Any:
-    """Naviga un JSONPath semplice ($.a.b[*]) e restituisce il valore."""
-    if not array_root:
+def _flatten(d: Dict, prefix: str = '', sep: str = '.') -> Dict:
+    """Appiattisce un dict annidato: {'a': {'b': 1}} → {'a.b': 1}"""
+    items: Dict = {}
+    for k, v in d.items():
+        new_key = f'{prefix}{sep}{k}' if prefix else k
+        if isinstance(v, dict):
+            items.update(_flatten(v, new_key, sep))
+        elif isinstance(v, list):
+            # Per array brevi (≤5 elementi scalari) serializza inline
+            if all(not isinstance(i, (dict, list)) for i in v) and len(v) <= 5:
+                items[new_key] = ', '.join(str(i) for i in v)
+            else:
+                items[new_key] = json.dumps(v, ensure_ascii=False)
+        else:
+            items[new_key] = v
+    return items
+
+
+# ────────────────────────────────────────────────────────────────
+# JSONPath / value extraction
+# ────────────────────────────────────────────────────────────────
+
+def _extract_array(data: Any, path: str) -> Any:
+    if not path:
         return data
-    parts = [p for p in re.split(r'[.\[\]]+', array_root.lstrip('$.')) if p and p != '*']
+    parts = [p for p in re.split(r'[.\[\]]+', path.lstrip('$.')) if p and p != '*']
     val = data
     for part in parts:
         if isinstance(val, dict):
@@ -371,75 +637,45 @@ def _extract_array(data: Any, array_root: str) -> Any:
     return val
 
 
-def _jsonpath_single(data: Any, path: str) -> Any:
-    """Estrae un singolo valore da un JSONPath semplice."""
-    return _extract_array(data, path)
-
-
-# ──────────────────────────────────────────────
-# Field extraction & tracciato mapping
-# ──────────────────────────────────────────────
-
 def extract_value(record: Dict, path: str) -> Any:
-    """
-    Estrae un valore da un record seguendo un JSONPath semplice
-    o una chiave diretta.
-    """
     if not path:
         return None
-    # Se è un path JSONPath naviga
     if path.startswith('$.') or '.' in path or '[' in path:
         return _extract_array(record, path)
-    # Altrimenti è una chiave diretta
     return record.get(path)
 
 
-def apply_field_mapping(record: Dict, field_mapping: Dict[str, str],
-                        static_values: Optional[Dict[str, str]] = None) -> Dict:
-    """
-    Applica il mapping tracciato al record.
-    field_mapping: { 'time': '$.timestamp', 'username': '$.user_name', ... }
-    static_values: { 'hostname': 'erp.corp.it', 'nomeapp': 'ERP' }
-    Restituisce un dict con i campi del tracciato standard + tutti i campi originali.
-    """
-    result = dict(record)  # Mantieni tutti i campi originali
-    static_values = static_values or {}
-
+def apply_field_mapping(record: Dict, field_mapping: Dict[str, str]) -> Dict:
+    result = dict(record)
     for std_field, src in field_mapping.items():
         if not src:
             continue
         if src.startswith('__static__:'):
             result[std_field] = src.split(':', 1)[1]
-        elif src in static_values:
-            result[std_field] = static_values[src]
         else:
             val = extract_value(record, src)
             if val is not None:
                 result[std_field] = val
-
     return result
 
 
-# ──────────────────────────────────────────────
-# Template interpolation for cascade calls
-# ──────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
+# Template interpolation  {{campo}}  e  {{a.b.c}}
+# ────────────────────────────────────────────────────────────────
 
 def interpolate(template: str, context: Dict) -> str:
-    """
-    Sostituisce {{ campo }} e {{ a.b.c }} con i valori dal context.
-    Usato per le chiamate in cascata dove l'output della call N
-    alimenta parametri della call N+1.
-    """
     def replacer(m):
         key = m.group(1).strip()
         val = extract_value(context, key)
+        if val is None:
+            val = context.get(key, '')
         return str(val) if val is not None else ''
     return re.sub(r'\{\{([^}]+)\}\}', replacer, template)
 
 
-# ──────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
 # Checkpoint
-# ──────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
 
 CHECKPOINT_BASE = os.path.join(
     os.environ.get('SPLUNK_HOME', '/opt/splunk'),
@@ -453,9 +689,8 @@ def _checkpoint_path(input_name: str) -> str:
 
 
 def load_checkpoint(input_name: str) -> Optional[str]:
-    path = _checkpoint_path(input_name)
     try:
-        with open(path, 'r') as f:
+        with open(_checkpoint_path(input_name), 'r') as f:
             return f.read().strip() or None
     except FileNotFoundError:
         return None
@@ -468,9 +703,9 @@ def save_checkpoint(input_name: str, value: str) -> None:
         f.write(str(value))
 
 
-# ──────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
 # Event formatting
-# ──────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────
 
 TRACCIATO_FIELDS = [
     'time', 'hostname', 'nomeapp', 'tipoazione', 'clientip',
@@ -479,28 +714,35 @@ TRACCIATO_FIELDS = [
 
 
 def format_event(record: Dict) -> str:
-    """
-    Serializza un record nel formato KV standard aziendale:
-      time="..." hostname="..." nomeapp="..." ...
-    I campi del tracciato vengono emessi per primi, poi tutti gli altri.
-    """
     parts = []
-    seen = set()
-
-    # Tracciato fields first (ordered)
+    seen  = set()
     for field in TRACCIATO_FIELDS:
-        if field in record and record[field] is not None and str(record[field]) != '':
-            val = str(record[field]).replace('"', '\\"')
-            parts.append(f'{field}="{val}"')
+        v = record.get(field)
+        if v is not None and str(v) != '':
+            parts.append(f'{field}="{str(v).replace(chr(34), chr(92)+chr(34))}"')
             seen.add(field)
-
-    # Remaining fields
     for k, v in record.items():
-        if k in seen:
+        if k in seen or k.startswith('_ac_'):
             continue
         if v is None or str(v) == '':
             continue
-        val = str(v).replace('"', '\\"')
-        parts.append(f'{k}="{val}"')
-
+        parts.append(f'{k}="{str(v).replace(chr(34), chr(92)+chr(34))}"')
     return ' '.join(parts)
+
+
+# ────────────────────────────────────────────────────────────────
+# Internal helpers
+# ────────────────────────────────────────────────────────────────
+
+def _get_logger():
+    import logging
+    return logging.getLogger('api_connect.ac_http')
+
+
+# Compat aliases
+def fetch_all_pages(call_cfg, auth_headers, auth_params, pagination_cfg):
+    """Compat wrapper usato dal template precedente."""
+    global_cfg = dict(pagination_cfg)
+    for record in _fetch_paginated(call_cfg, auth_headers, auth_params,
+                                    pagination_cfg, global_cfg):
+        yield json.dumps(record), 'application/json'
