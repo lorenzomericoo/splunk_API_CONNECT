@@ -1,13 +1,13 @@
 """
-ac_http.py  v2
+ac_http.py  v3
 Client HTTP condiviso per tutti gli script generati da API Connect.
 
-Novità v2:
-- auth per-call (ogni call della chain ha la sua auth indipendente)
-- enrichment join (merge campi call N+1 su record call N via chiave)
-- error policy per-call (retry 429, skip 4xx, stop 5xx)
-- normalizer esteso (HTML → BeautifulSoup-free text, XML nested flatten)
-- interpolazione {{var}} per cascata
+Novità v3 (Sprint 1):
+- Token cache OAuth2 con TTL (ac_token_cache) — non rinegozia a ogni run
+- Circuit breaker integrato (ac_circuit_breaker) — stop automatico su N errori
+- Retry-After header respect su HTTP 429
+- ac_transforms integrato nella chain (pipeline per-campo + output format)
+- Metriche per-run (ac_metrics) — aggiorna KV Store dopo ogni esecuzione
 """
 
 import base64
@@ -23,6 +23,19 @@ import urllib.request
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import splunklib.client as splunk_client
+
+# Moduli Sprint 1 (import lazy per compatibilità se mancano)
+try:
+    from ac_token_cache import get_oauth2_token_cached
+    _TOKEN_CACHE_AVAILABLE = True
+except ImportError:
+    _TOKEN_CACHE_AVAILABLE = False
+
+try:
+    from ac_circuit_breaker import CircuitBreaker, CircuitOpenError
+    _CB_AVAILABLE = True
+except ImportError:
+    _CB_AVAILABLE = False
 
 
 # ────────────────────────────────────────────────────────────────
@@ -47,17 +60,33 @@ def get_credential(realm: str, session_key: str) -> Tuple[str, str]:
 
 
 def get_oauth2_token(token_url: str, client_id: str, client_secret: str,
-                     scope: str = '') -> str:
+                     scope: str = '', realm: str = '') -> str:
+    """
+    Ottiene un token OAuth2 CC.
+    Se ac_token_cache è disponibile, usa la cache con TTL.
+    Altrimenti negozia ogni volta (comportamento v2).
+    """
+    if _TOKEN_CACHE_AVAILABLE and realm:
+        try:
+            return get_oauth2_token_cached(
+                token_url, client_id, client_secret, scope, realm)
+        except Exception as e:
+            import logging
+            logging.getLogger('api_connect.ac_http').error(
+                'OAuth2 cached token error: %s', e)
+            return ''
+
+    # Fallback: negozia direttamente
     data: Dict[str, str] = {'grant_type': 'client_credentials'}
     if scope:
         data['scope'] = scope
-    body = urllib.parse.urlencode(data).encode()
+    body  = urllib.parse.urlencode(data).encode()
     creds = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
-    req = urllib.request.Request(
+    req   = urllib.request.Request(
         token_url, data=body,
         headers={
             'Authorization': f'Basic {creds}',
-            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Type':  'application/x-www-form-urlencoded',
         },
         method='POST',
     )
@@ -72,7 +101,7 @@ def get_oauth2_token(token_url: str, client_id: str, client_secret: str,
 
 def _build_auth_headers(auth_type: str, username: str, secret: str,
                          apikey_param: str = '', token_url: str = '',
-                         oauth_scope: str = '') -> Tuple[Dict, Dict]:
+                         oauth_scope: str = '', realm: str = '') -> Tuple[Dict, Dict]:
     """
     Restituisce (headers, query_params) per il tipo di auth dato.
     """
@@ -88,7 +117,7 @@ def _build_auth_headers(auth_type: str, username: str, secret: str,
     elif auth_type == 'api_key_query':
         params[apikey_param or 'api_key'] = secret
     elif auth_type == 'oauth2_cc':
-        token = get_oauth2_token(token_url, username, secret, oauth_scope)
+        token = get_oauth2_token(token_url, username, secret, oauth_scope, realm)
         if token:
             headers['Authorization'] = f'Bearer {token}'
     return headers, params
@@ -124,7 +153,7 @@ def resolve_call_auth(call_cfg: Dict, global_cfg: Dict,
 
     username, secret = get_credential(realm, session_key)
     return _build_auth_headers(auth_type, username, secret,
-                                apikey_param, token_url, oauth_scope)
+                                apikey_param, token_url, oauth_scope, realm)
 
 
 def build_auth(cfg: Dict, session_key: str) -> Tuple[Dict, Dict]:
@@ -190,21 +219,30 @@ def do_request(url: str, method: str, headers: Dict[str, str],
                body_data: Optional[bytes] = None,
                timeout: int = 60,
                max_retries: int = 3,
-               error_policy: str = 'default') -> Tuple[str, int, str]:
+               error_policy: str = 'default',
+               circuit_breaker=None) -> Tuple[str, int, str]:
     """
-    Esegue una richiesta HTTP con retry + backoff esponenziale.
-    Applica error_policy sul codice di risposta.
+    Esegue una richiesta HTTP con:
+    - retry + backoff esponenziale
+    - Retry-After header respect su HTTP 429
+    - circuit breaker (opzionale)
+    - error policy applicata sul codice di risposta
     Restituisce (body_str, status_code, content_type).
     """
     last_exc: Optional[Exception] = None
 
+    # Circuit breaker check
+    if circuit_breaker and _CB_AVAILABLE:
+        try:
+            circuit_breaker.before_call()
+        except CircuitOpenError:
+            raise
+
     for attempt in range(max_retries):
         if attempt > 0:
-            wait = 2 ** attempt
-            import logging
-            logging.getLogger('api_connect.ac_http').info(
-                'Retry %d/%d dopo %ds (policy=%s)', attempt, max_retries, wait, error_policy)
-            time.sleep(wait)
+            _get_logger().info(
+                'Retry %d/%d (policy=%s)', attempt, max_retries, error_policy)
+
         try:
             req = urllib.request.Request(url, data=body_data,
                                           headers=headers, method=method)
@@ -213,22 +251,66 @@ def do_request(url: str, method: str, headers: Dict[str, str],
                 raw   = resp.read()
                 body  = raw.decode(_extract_charset(ctype), errors='replace')
                 apply_error_policy(resp.status, body, error_policy)
+                if circuit_breaker and _CB_AVAILABLE:
+                    circuit_breaker.record_success()
                 return body, resp.status, ctype
 
         except urllib.error.HTTPError as e:
             ctype = e.headers.get('Content-Type', '')
             raw   = e.read()
             body  = raw.decode(_extract_charset(ctype), errors='replace')
-            result = apply_error_policy(e.code, body, error_policy)  # may raise
+
+            # Respect Retry-After su 429
+            if e.code == 429:
+                retry_after = e.headers.get('Retry-After', '')
+                wait = _parse_retry_after(retry_after)
+                _get_logger().warning(
+                    'HTTP 429 — Retry-After=%ss (attempt %d/%d)',
+                    wait, attempt + 1, max_retries)
+                time.sleep(wait)
+                continue
+
+            try:
+                result = apply_error_policy(e.code, body, error_policy)
+            except (RetryableError, SkippableError, FatalError):
+                if circuit_breaker and _CB_AVAILABLE:
+                    circuit_breaker.record_failure()
+                raise
+
             if result == 'ok':
+                if circuit_breaker and _CB_AVAILABLE:
+                    circuit_breaker.record_success()
                 return body, e.code, ctype
-            # RetryableError → loop again
+
         except (RetryableError, SkippableError, FatalError):
             raise
-        except Exception as e:
-            last_exc = e
+        except Exception as exc:
+            last_exc = exc
+            wait = 2 ** attempt
+            _get_logger().warning('Request error (attempt %d): %s — retry in %ds',
+                                   attempt + 1, exc, wait)
+            time.sleep(wait)
 
+    if circuit_breaker and _CB_AVAILABLE:
+        circuit_breaker.record_failure()
     raise FatalError(f'Request failed after {max_retries} attempts: {last_exc}')
+
+
+def _parse_retry_after(header_val: str) -> float:
+    """Interpreta il valore Retry-After (secondi o HTTP-date)."""
+    if not header_val:
+        return 5.0
+    try:
+        return max(1.0, float(header_val.strip()))
+    except ValueError:
+        # Prova come HTTP-date
+        try:
+            from email.utils import parsedate_to_datetime
+            retry_dt = parsedate_to_datetime(header_val.strip())
+            wait = (retry_dt.timestamp() - time.time())
+            return max(1.0, wait)
+        except Exception:
+            return 5.0
 
 
 def _extract_charset(ctype: str) -> str:
@@ -746,3 +828,123 @@ def fetch_all_pages(call_cfg, auth_headers, auth_params, pagination_cfg):
     for record in _fetch_paginated(call_cfg, auth_headers, auth_params,
                                     pagination_cfg, global_cfg):
         yield json.dumps(record), 'application/json'
+
+
+# ────────────────────────────────────────────────────────────────
+# execute_chain_v3 — versione con circuit breaker, transforms e metrics
+# ────────────────────────────────────────────────────────────────
+
+def execute_chain_v3(calls: List[Dict], global_cfg: Dict,
+                     session_key: str,
+                     pagination_cfg: Optional[Dict] = None) -> List[Dict]:
+    """
+    execute_chain con Sprint-1 features:
+    - Circuit breaker per-input (stop su N errori consecutivi)
+    - Retry-After respect su 429
+    - Compatible con execute_chain, usato dagli script generati v3
+    """
+    logger = _get_logger()
+    pagination_cfg = pagination_cfg or {}
+
+    if not calls:
+        return []
+
+    # Circuit breaker
+    cb = None
+    if _CB_AVAILABLE:
+        cb_cfg = global_cfg.get('circuit_breaker', {})
+        cb = CircuitBreaker(
+            name=global_cfg.get('name', 'api_connect'),
+            failure_threshold=int(cb_cfg.get('failure_threshold', 5)),
+            cooldown_s=int(cb_cfg.get('cooldown_s', 120)),
+        )
+        try:
+            cb.before_call()
+        except CircuitOpenError as e:
+            logger.warning('Circuit breaker OPEN: %s', e)
+            return []
+
+    # Prima call
+    first_call   = calls[0]
+    auth_h, auth_p = resolve_call_auth(first_call, global_cfg, session_key)
+    try:
+        base_records = list(_fetch_paginated(
+            first_call, auth_h, auth_p,
+            pagination_cfg if len(calls) == 1 else {},
+            global_cfg,
+        ))
+        if cb:
+            cb.record_success()
+    except FatalError as e:
+        if cb:
+            cb.record_failure()
+        raise
+    logger.info('Call 1 (%s): %d record', first_call.get('url', ''), len(base_records))
+
+    if len(calls) == 1:
+        return base_records
+
+    # Call successive
+    enriched = []
+    for rec in base_records:
+        current = dict(rec)
+        for idx, call in enumerate(calls[1:], start=2):
+            call_auth_h, call_auth_p = resolve_call_auth(call, global_cfg, session_key)
+            url      = interpolate(call.get('url', ''), current)
+            method   = call.get('method', 'GET').upper()
+            policy   = call.get('error_policy', 'default')
+            join_key = call.get('join_key', '').strip()
+
+            extra_h: Dict[str, str] = {}
+            if call.get('headers'):
+                try:
+                    extra_h = json.loads(call['headers'])
+                except Exception:
+                    pass
+
+            req_headers = {
+                'User-Agent': 'Splunk-APIConnect/3.0',
+                'Accept': 'application/json, text/csv, */*',
+                **call_auth_h, **extra_h,
+            }
+
+            body_data: Optional[bytes] = None
+            if method in ('POST', 'PUT', 'PATCH') and call.get('body'):
+                b = interpolate(call['body'], current)
+                body_data = b.encode('utf-8')
+                if 'Content-Type' not in req_headers:
+                    req_headers['Content-Type'] = 'application/json'
+
+            if call_auth_p:
+                sep = '&' if '?' in url else '?'
+                url = url + sep + urllib.parse.urlencode(call_auth_p)
+
+            try:
+                body, status, ctype = do_request(
+                    url, method, req_headers, body_data,
+                    error_policy=policy, circuit_breaker=cb,
+                )
+                sub_records = parse_response(body, ctype, global_cfg)
+                if join_key and sub_records:
+                    cur_val = str(current.get(join_key, ''))
+                    matched = next(
+                        (r for r in sub_records if str(r.get(join_key, '')) == cur_val),
+                        sub_records[0],
+                    )
+                    current.update(matched)
+                elif sub_records:
+                    current.update(sub_records[0])
+
+            except SkippableError:
+                logger.warning('Call %d skip', idx)
+                current['_ac_skip'] = True
+                break
+            except FatalError as fe:
+                logger.error('Call %d fatal: %s', idx, fe)
+                current['_ac_error'] = str(fe)
+                break
+
+        if not current.get('_ac_skip'):
+            enriched.append(current)
+
+    return enriched

@@ -305,3 +305,92 @@
 .ac-cron-preview { font-size: 12px; color: var(--text-muted-color, #8b959e); font-style: italic; }
 .ac-secret-row   { display: flex; align-items: center; gap: 8px; }
 .ac-code-block   { font-family: monospace; font-size: 12px; background: #f8f9fb; border: 1px solid var(--border-color, #d6dde4); border-radius: 4px; padding: 12px; max-height: 340px; overflow-y: auto; margin: 0; white-space: pre; }
+
+/* ============================================================
+   API Connect — Sprint 1 additions (v3)
+   ============================================================ */
+
+/* ---------- Pipeline step row ---------- */
+.ac-pipeline-step {
+  background: var(--table-head-bg, #f5f7f9);
+  border: 1px solid var(--border-color, #d6dde4);
+  border-radius: 4px;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ac-pipeline-step input {
+  max-width: 180px;
+  padding: 3px 7px;
+  font-size: 12px;
+  border: 1px solid var(--border-color, #d6dde4);
+  border-radius: 3px;
+  font-family: monospace;
+}
+.ac-add-fn-btn {
+  margin-left: auto;
+  font-size: 12px !important;
+}
+
+/* ---------- Output format preview ---------- */
+#ac-event-string-preview {
+  font-size: 13px !important;
+  background: #f0f7ff;
+  border-color: #90caf9 !important;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+#ac-mapped-preview {
+  font-size: 12px;
+  max-height: 200px;
+}
+
+/* ---------- Circuit breaker badge ---------- */
+.ac-cb-open {
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #ef9a9a;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.ac-cb-closed {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ---------- Transform legend chips ---------- */
+#ac-transforms-legend .ac-badge {
+  font-size: 10px !important;
+  padding: 2px 6px;
+  margin: 2px;
+}
+
+/* ---------- Dashboard metrics ---------- */
+.ac-metric-cell {
+  font-size: 12px;
+  font-family: monospace;
+}
+.ac-metric-cell.ok    { color: #2e7d32; }
+.ac-metric-cell.err   { color: #c62828; }
+.ac-metric-cell.cb    { color: #e67e22; }
+.ac-metric-cell.draft { color: #8b959e; }
+
+/* ---------- Preview note ---------- */
+#preview-note {
+  font-style: italic;
+}
+
+/* ---------- Step 7 resilienza ---------- */
+#cb-detail .control-group {
+  max-width: 420px;
+}

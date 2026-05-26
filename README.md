@@ -1,223 +1,209 @@
-# API Connect for Splunk — v2
+# API Connect for Splunk — v3
 
-Wizard GUI stile **Postman** per la creazione di Modular Input che interrogano API REST esterne, con Chain Builder visuale, parsing della risposta e mapping al tracciato standard aziendale.
-
----
-
-## Novità v2 rispetto a v1
-
-| Feature | v1 | v2 |
-|---|---|---|
-| Autenticazione per-call | ✗ | ✅ ogni call ha la sua auth indipendente |
-| Chain Builder visuale | ✗ | ✅ card drag-and-drop stile Postman |
-| Risposta live per-card | ✗ | ✅ Raw / Tree / Variabili per ogni call |
-| Variabili `{{campo}}` | ✅ | ✅ chip cliccabili tra le card |
-| Join tra endpoint | ✗ | ✅ merge su chiave configurabile |
-| Error policy per-call | ✗ | ✅ retry/skip/stop/fallback per HTTP code |
-| HTML parsing | ✗ | ✅ table extraction senza dipendenze esterne |
-| XML nested flatten | ✗ | ✅ namespace-aware, attributi inclusi |
-| CSV/TSV auto-detect | parziale | ✅ da Content-Type e fallback |
-| OAuth2 CC | ✅ | ✅ + override per singola call |
+Wizard GUI stile **Postman** per la creazione di Modular Input che interrogano API REST esterne.
+Chain Builder visuale con pipeline di trasformazioni per-campo, output format configurabile,
+circuit breaker, token cache OAuth2 e metriche per-run automatiche.
 
 ---
 
-## Requisiti
+## Novità v3 (Sprint 1)
+
+| Feature | Dettaglio |
+|---|---|
+| **Pipeline trasformazioni** | 26 funzioni built-in per-campo: date, stringhe, numeri, hash, lookup CSV/JSON |
+| **Output format builder** | pipe \| kv \| json \| csv \| custom — preview live nel wizard |
+| **Token cache OAuth2** | Cache con TTL su file — non rinegozia a ogni run |
+| **Circuit breaker** | Stop automatico dopo N errori con cooldown configurabile |
+| **Retry-After respect** | HTTP 429 → attende il tempo indicato dal server |
+| **Metriche per-run** | Aggiorna KV Store dopo ogni run: status, count, latency_ms, error |
+| **Preview evento** | Step 9 mostra la stringa finale esatta prima della generazione |
+
+---
+
+## Prerequisiti
 
 | Componente | Versione |
 |---|---|
 | Splunk Enterprise / Heavy Forwarder | 9.0+ |
 | Python (Splunk embedded) | 3.7+ |
-| Sistema operativo | Linux, macOS, Windows |
 
-Nessuna dipendenza Python esterna — tutto stdlib + splunklib.
+Nessuna dipendenza esterna — tutto stdlib + splunklib.
 
 ---
 
 ## Installazione
 
 ```bash
-# 1. Copia l'app
-cp api_connect.spl $SPLUNK_HOME/etc/apps/
-
-# 2. Installa via Splunk CLI
-$SPLUNK_HOME/bin/splunk install app $SPLUNK_HOME/etc/apps/api_connect.spl \
-    -auth admin:password
-
-# 3. Imposta permessi
+$SPLUNK_HOME/bin/splunk install app api_connect_v3.spl -auth admin:password
 chmod 755 $SPLUNK_HOME/etc/apps/api_connect/bin/*.py
-
-# 4. Riavvia
 $SPLUNK_HOME/bin/splunk restart
 ```
 
-Oppure installa da Splunk Web: **Apps → Manage Apps → Install from file**.
-
 ---
 
-## Struttura app
+## Struttura moduli Python
 
 ```
-api_connect/
-├── appserver/static/
-│   ├── css/api_connect.css              # Stili Splunk-native
-│   └── js/
-│       ├── api_connect_dashboard.js     # Dashboard + CRUD tabella
-│       ├── api_connect_builder.js       # Wizard 7 step + Chain Builder
-│       └── api_connect_credentials.js  # Credential Manager CRUD
-├── bin/
-│   ├── ac_http.py                       # Client HTTP v2 (auth chain, join, parsers)
-│   ├── ac_logger.py                     # Logger → _internal
-│   ├── ac_input_template.py             # Template script generati
-│   ├── api_connect_rest.py              # REST handler: test call + KV proxy
-│   └── api_connect_generate.py         # REST handler: genera script + inputs.conf
-└── default/
-    ├── app.conf / nav/ / setup.xml
-    ├── collections.conf                 # KV Store schema
-    ├── restmap.conf                     # Endpoint REST custom
-    ├── props.conf / transforms.conf
-    ├── savedsearches.conf               # 5 ricerche + 2 alert
-    ├── macros.conf                      # 5 macro SPL
-    ├── eventtypes.conf / tags.conf
-    └── data/ui/views/
-        ├── dashboard.xml
-        ├── input_builder.xml
-        └── credential_manager.xml
+bin/
+├── ac_http.py            # Client HTTP: auth per-call, chain, paginator, parsers
+├── ac_transforms.py      # 26 funzioni trasformazione + pipeline executor + build_event_string
+├── ac_token_cache.py     # OAuth2 token cache con TTL su file
+├── ac_circuit_breaker.py # Circuit breaker CLOSED/OPEN/HALF_OPEN con persistenza
+├── ac_metrics.py         # RunMetrics → KV Store dopo ogni run
+├── ac_logger.py          # Logger → index=_internal sourcetype=custom_script_logger
+├── ac_input_template.py  # Template per gli script generati
+├── api_connect_rest.py   # REST handler: test call per-call-auth
+└── api_connect_generate.py # REST handler: genera script v3
 ```
 
 ---
 
-## Wizard — 7 step
+## Wizard — 9 step
 
 | Step | Contenuto |
 |---|---|
-| 1 — Auth globale | Tipo default (Bearer/Basic/API Key/OAuth2 CC) + credenziale da `password.conf`. Ogni call può sovrascriverla. |
-| 2 — Chain Builder | Card drag-and-drop: URL, method, headers, body, **auth override per-call**, **error policy per-call**, **join su chiave**. Ogni card ha la risposta live con tab Raw/Tree/Variabili. Tra le card: chip delle variabili disponibili cliccabili per inserirle in URL/body. |
-| 3 — Parsing | Tree interattivo popolato dalle risposte del Chain Builder. Click per selezionare campi. Supporto: JSON, CSV, TSV, XML, HTML (table extract), testo+regex. |
-| 4 — Tracciato | Mapping al tracciato standard: `time\|hostname\|nomeapp\|tipoazione\|clientip\|username\|tipooperazione\|valorePrima\|valoreDP\|target\|note` |
-| 5 — Output | Index, sourcetype, source, host, checkpoint dedup. |
-| 6 — Logger | Source per `index=_internal sourcetype=custom_script_logger`. |
-| 7 — Genera | Riepilogo + generazione script Python e stanza `inputs.conf`. |
+| 1 | **Auth globale** — default per tutte le call, sovrascrivibile per-call |
+| 2 | **Chain Builder** — card drag-drop, risposta live per-card, auth override, error policy, join |
+| 3 | **Parsing** — tree interattivo, JSONPath, CSV/TSV/XML/HTML/text+regex |
+| 4 | **Pipeline trasformazioni** — per ogni campo: sequenza di funzioni in cascata |
+| 5 | **Tracciato standard** — mapping a time\|hostname\|nomeapp\|tipoazione\|clientip\|username\|tipooperazione\|valorePrima\|valoreDP\|target\|note |
+| 6 | **Output format + Destinazione** — pipe/kv/json/csv/custom · index/sourcetype/source · checkpoint |
+| 7 | **Resilienza** — circuit breaker: soglia fallimenti + cooldown |
+| 8 | **Logger** — source per custom_script_logger |
+| 9 | **Preview & Genera** — stringa evento live + riepilogo + generazione script |
 
 ---
 
-## Chain Builder — casi d'uso
+## Trasformazioni disponibili (ac_transforms.py)
 
-### Auth diversa per call
-```
-Call 1: OAuth2 CC (globale)  →  GET /transactions
-Call 2: API Key override      →  GET /transactions/{{id}}/details
-Call 3: Basic override        →  POST /hr/lookup  body: {"user":"{{user_name}}"}
-```
-
-### Join tra endpoint
-```
-Call 1: GET /users            →  lista [{id, name, email}]
-Call 2: GET /users/{{id}}/roles  join_key="id"  →  merge ruoli su ogni utente
-```
-Il campo `join_key` cerca nella risposta della call 2 il record con lo stesso valore
-di `join_key` della call 1 e fonde i campi sul record corrente.
-
-### Error policy per-call
-| Policy | Comportamento |
-|---|---|
-| `default` | Stop su qualsiasi errore |
-| `retry_429` | Retry 3× con backoff esponenziale su HTTP 429 |
-| `skip_404` | Skip del record corrente su HTTP 404 |
-| `skip_all_4xx` | Skip su qualsiasi 4xx |
-| `stop_5xx` | Stop + log su 5xx, skip su 4xx |
-| `skip_all` | Skip su qualsiasi errore |
-
----
-
-## Formati risposta supportati
-
-| Formato | Rilevamento | Note |
+### Stringhe
+| Funzione | Parametri | Esempio |
 |---|---|---|
-| JSON | `application/json` o default | Supporta JSONPath, array root, flatten nested |
-| JSON array | Se la root è già un array | — |
-| CSV | `text/csv` o header riga 1 | DictReader, fallback manuale |
-| TSV | `text/tab-separated` | — |
-| XML | `text/xml`, `application/xml` o `<` iniziale | Namespace-aware, attributi inclusi, flatten |
-| HTML | `text/html` | Estrae `<table>` → righe dict; fallback testo pulito |
-| Testo + regex | Manuale | Named groups `(?P<campo>...)` → campi |
+| `upper` | — | `mario` → `MARIO` |
+| `lower` | — | `MARIO` → `mario` |
+| `strip` | — | `  valore  ` → `valore` |
+| `replace` | old, new | `@` → `_AT_` |
+| `split` | sep, index | `mario@corp.it` sep=`@` idx=`0` → `mario` |
+| `truncate` | length | → primi N caratteri |
+| `pad_left` | length, char | `42` → `000042` |
+| `concat` | prefix, suffix | → `prefix` + valore + `suffix` |
+| `regex_extract` | pattern, group | estrae primo gruppo/named group |
+| `regex_replace` | pattern, replacement | sostituzione regex |
+
+### Date / Time
+| Funzione | Esempio |
+|---|---|
+| `iso_to_epoch` | `2024-06-14T14:30:00Z` → `1718371800.0` |
+| `epoch_to_iso` | `1718371800` → `2024-06-14T14:30:00Z` |
+| `strptime_to_epoch` | fmt=`%d/%m/%Y %H:%M:%S` |
+| `epoch_to_splunk` | → `06/14/2024 14:30:00` |
+
+### Numeri
+| Funzione | Esempio |
+|---|---|
+| `to_int` | `1500.75` → `1500` |
+| `to_float` | `"1.500,75"` → `1500.75` (gestisce notazione europea) |
+| `round` | decimals=2 |
+| `abs_val` | `-1500` → `1500` |
+| `math_expr` | expr=`x/100` |
+
+### Logica
+| Funzione | Esempio |
+|---|---|
+| `default` | value=`N/A` se vuoto/None |
+| `map_values` | `{"1":"login","2":"logout"}` |
+| `if_contains` | substring, true_val, false_val |
+
+### Sicurezza / PII
+| Funzione | Esempio |
+|---|---|
+| `sha256` | hash anonimizzazione |
+| `mask` | first=4 last=4 → `IT60*******1101` |
+
+### Lookup
+| Funzione | Parametri |
+|---|---|
+| `lookup_csv` | path, key_col, val_col |
+| `lookup_json` | mapping (JSON inline), fallback |
 
 ---
 
-## Tracciato standard aziendale
+## Formati output evento
+
+| Formato | Esempio |
+|---|---|
+| `pipe` | `2024-06-14T14:30:00Z\|erp.corp.it\|ERP_CORP\|TRANSFER\|10.0.1.55\|mario.rossi\|\|5000\|3500\|IT60X…\|` |
+| `kv` | `time="1718371800" hostname="erp.corp.it" nomeapp="ERP_CORP" …` |
+| `json` | `{"time":"1718371800","hostname":"erp.corp.it",…}` |
+| `csv` | `1718371800,erp.corp.it,ERP_CORP,TRANSFER,…` |
+| `custom` | separatore personalizzato |
+
+---
+
+## Circuit breaker
+
+Stati: `CLOSED` → `OPEN` (dopo N fallimenti) → `HALF_OPEN` (dopo cooldown) → `CLOSED`
 
 ```
-time | hostname | nomeapp | tipoazione | clientip | username |
-tipooperazione | valorePrima | valoreDP | target | note
+Monitoraggio:
+index=_internal sourcetype=custom_script_logger source=api_connect:*
+| rex field=message "circuit=(?<cb_state>\w+)"
+| stats latest(cb_state) by source
 ```
 
-Campi **obbligatori**: `time`, `hostname`, `nomeapp`, `tipoazione`.
-
-Esempio evento generato:
-```
-time="1718000000" hostname="erp.corp.it" nomeapp="ERP_CORP"
-tipoazione="TRANSFER" clientip="10.0.1.55" username="mario.rossi"
-valorePrima="5000.00" valoreDP="3500.00"
-target="IT60X0542811101000000123456"
+Reset manuale da Python:
+```python
+from ac_circuit_breaker import CircuitBreaker
+CircuitBreaker("api_erp_transactions").reset()
 ```
 
 ---
 
-## Logger di esecuzione
+## Token cache OAuth2
 
-Ogni script scrive su `stderr` (catturato da Splunk):
-
+Il token viene salvato in:
 ```
-index=_internal sourcetype=custom_script_logger
-source=api_connect:<nome_input>:runner
+$SPLUNK_HOME/var/lib/splunk/modinputs/api_connect/token_cache/<realm>.token.json
+```
+Rinnovo automatico 60 secondi prima della scadenza.
+Invalidazione manuale:
+```python
+from ac_token_cache import invalidate_token
+invalidate_token("api_connect:oauth2_cc:erp_prod")
 ```
 
-SPL di monitoraggio:
+---
+
+## Metriche per-run (dashboard)
+
+Ogni run aggiorna il record KV Store con:
+
+| Campo | Contenuto |
+|---|---|
+| `last_status` | `OK` / `ERROR` / `CB_OPEN` |
+| `last_run` | timestamp UTC |
+| `last_count` | record inviati |
+| `last_latency_ms` | durata totale run |
+| `last_error` | messaggio errore (max 500 char) |
+
+SPL per monitoraggio:
 ```spl
-`ac_logs`
-| rex field=message "records=(?<n>\d+)"
-| rex field=message "elapsed_ms=(?<ms>\d+)"
-| eval status=if(level="ERROR","ERROR","OK")
-| stats latest(_time) as last_run latest(status) as status
-         latest(n) as records latest(ms) as ms
-  by source
+`ac_status`
+| eval status_class=case(last_status="OK","success",last_status="CB_OPEN","warning",true(),"error")
+| table input, last_status, last_run, last_count, last_latency_ms, last_error
 ```
 
 ---
 
-## Macro SPL disponibili
+## Lookup CSV
 
-| Macro | Uso |
-|---|---|
-| `` `ac_logs` `` | Tutti i log di tutti gli input |
-| `` `ac_logs(nome)` `` | Log di un input specifico |
-| `` `ac_input(nome)` `` | Eventi di un input specifico |
-| `` `ac_tracciato` `` | Tutti gli eventi nel tracciato standard |
-| `` `ac_status` `` | Stato corrente di tutti gli input |
-
----
-
-## Sicurezza
-
-- Le credenziali non transitano nel browser: la test call è eseguita lato server dal REST handler Python con il session token dell'utente corrente.
-- I secret sono letti da `password.conf` tramite `splunklib.client` a runtime — mai scritti in chiaro negli script generati.
-- Il realm è sempre prefissato `api_connect:<tipo>:<label>` per namespace isolation.
-
----
-
-## Troubleshooting
-
-| Problema | Soluzione |
-|---|---|
-| REST handler non risponde | `index=_internal sourcetype=splunkd component=AdminManager` |
-| Credenziali non caricate | Verifica realm `api_connect:*` in `storage/passwords` |
-| Script non eseguito | `chmod 755 $SPLUNK_HOME/etc/apps/api_connect/bin/ac_input_*.py` |
-| KV Store vuoto | Verifica `collections.conf` e riavvia Splunk |
-| OAuth2 token error | Controlla `token_url` e credenziali realm |
-| 429 non retried | Imposta `error_policy: retry_429` nella call |
-| Join non funziona | Verifica che `join_key` esista in entrambe le risposte |
+Salva il file in `$APP/lookups/nome.csv` e usa la funzione `lookup_csv`:
+```json
+{"fn": "lookup_csv", "path": "$APP/lookups/roles.csv", "key_col": "code", "val_col": "label"}
+```
 
 ---
 
 ## Versione
 
-`2.0.0` — Chain Builder + per-call auth + join + error policy + HTML/XML parsers
+`3.0.0` — Sprint 1: transforms pipeline · output format · token cache · circuit breaker · Retry-After · metrics · preview evento

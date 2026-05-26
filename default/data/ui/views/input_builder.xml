@@ -1,33 +1,37 @@
 <dashboard version="1.1" theme="light" script="api_connect_builder.js" stylesheet="api_connect.css">
-  <label>API Connect — Input Builder</label>
-  <description>Wizard guidato con Chain Builder stile Postman</description>
+  <label>API Connect — Input Builder v3</label>
+  <description>Wizard con Chain Builder, Transform Pipeline e Preview evento</description>
   <row>
     <panel>
       <html>
         <div id="ac-builder-root">
 
-          <!-- Wizard progress bar -->
+          <!-- Wizard progress — 9 step -->
           <div class="ac-wizard-progress">
-            <div class="ac-wizard-step active" data-step="1"><div class="ac-step-circle">1</div><div class="ac-step-label">Autenticazione</div></div>
+            <div class="ac-wizard-step active" data-step="1"><div class="ac-step-circle">1</div><div class="ac-step-label">Auth globale</div></div>
             <div class="ac-wizard-connector"></div>
             <div class="ac-wizard-step" data-step="2"><div class="ac-step-circle">2</div><div class="ac-step-label">Chain Builder</div></div>
             <div class="ac-wizard-connector"></div>
             <div class="ac-wizard-step" data-step="3"><div class="ac-step-circle">3</div><div class="ac-step-label">Parsing</div></div>
             <div class="ac-wizard-connector"></div>
-            <div class="ac-wizard-step" data-step="4"><div class="ac-step-circle">4</div><div class="ac-step-label">Tracciato</div></div>
+            <div class="ac-wizard-step" data-step="4"><div class="ac-step-circle">4</div><div class="ac-step-label">Trasformazioni</div></div>
             <div class="ac-wizard-connector"></div>
-            <div class="ac-wizard-step" data-step="5"><div class="ac-step-circle">5</div><div class="ac-step-label">Output</div></div>
+            <div class="ac-wizard-step" data-step="5"><div class="ac-step-circle">5</div><div class="ac-step-label">Tracciato</div></div>
             <div class="ac-wizard-connector"></div>
-            <div class="ac-wizard-step" data-step="6"><div class="ac-step-circle">6</div><div class="ac-step-label">Logger</div></div>
+            <div class="ac-wizard-step" data-step="6"><div class="ac-step-circle">6</div><div class="ac-step-label">Output</div></div>
             <div class="ac-wizard-connector"></div>
-            <div class="ac-wizard-step" data-step="7"><div class="ac-step-circle">7</div><div class="ac-step-label">Riepilogo</div></div>
+            <div class="ac-wizard-step" data-step="7"><div class="ac-step-circle">7</div><div class="ac-step-label">Resilienza</div></div>
+            <div class="ac-wizard-connector"></div>
+            <div class="ac-wizard-step" data-step="8"><div class="ac-step-circle">8</div><div class="ac-step-label">Logger</div></div>
+            <div class="ac-wizard-connector"></div>
+            <div class="ac-wizard-step" data-step="9"><div class="ac-step-circle">9</div><div class="ac-step-label">Preview &amp; Genera</div></div>
           </div>
 
           <!-- STEP 1: AUTH GLOBALE -->
           <div class="ac-step-panel active" id="step-1">
             <div class="ac-panel-header">
               <h3 class="ac-panel-title">Step 1 — Autenticazione globale</h3>
-              <p class="ac-panel-desc">Configura l'autenticazione predefinita per tutte le chiamate. Ogni singola call nello Step 2 può sovrascriverla con un'autenticazione diversa.</p>
+              <p class="ac-panel-desc">Configura il default. Ogni call nello Step 2 può sovrascriverlo.</p>
             </div>
             <div class="ac-form-body">
               <div class="control-group">
@@ -35,7 +39,7 @@
                 <div class="controls"><input type="text" id="f-name" class="input-xlarge" placeholder="es. api_erp_transactions"/></div>
               </div>
               <div class="control-group">
-                <label class="control-label">Autenticazione globale <span class="ac-required">*</span></label>
+                <label class="control-label">Auth globale <span class="ac-required">*</span></label>
                 <div class="controls">
                   <select id="f-auth-type" class="input-xlarge">
                     <option value="none">Nessuna</option>
@@ -45,7 +49,6 @@
                     <option value="api_key_query">API Key — Query param</option>
                     <option value="oauth2_cc">OAuth2 Client Credentials</option>
                   </select>
-                  <span class="help-block">Ogni call può usare un'autenticazione diversa — configura qui il default.</span>
                 </div>
               </div>
               <div class="control-group" id="auth-credential-group" style="display:none">
@@ -78,55 +81,43 @@
           <div class="ac-step-panel" id="step-2">
             <div class="ac-panel-header">
               <h3 class="ac-panel-title">Step 2 — Chain Builder</h3>
-              <p class="ac-panel-desc">Costruisci la catena di chiamate API. Ogni call ha la sua risposta live, auth override, error policy e join. Trascina le card per riordinare. Usa <code>{{variabile}}</code> negli URL/body per passare dati da una call alla successiva.</p>
+              <p class="ac-panel-desc">Costruisci la catena di chiamate. Ogni card ha risposta live, auth override, error policy e join configurabili. Usa <code>{{variabile}}</code> negli URL/body.</p>
             </div>
             <div class="ac-form-body" style="max-width:100%">
-
-              <!-- Chain area — popolata da JS -->
+              <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                <button class="btn btn-primary ac-btn-sm" id="btn-run-all-calls">▶ Run all</button>
+                <span id="run-all-status" style="font-size:12px;color:var(--text-muted-color,#8b959e)"></span>
+                <div style="flex:1"></div>
+                <label style="font-size:12px;color:var(--text-muted-color,#8b959e)">Schedule:</label>
+                <input type="text" id="f-schedule" class="input-medium" placeholder="*/5 * * * *"/>
+                <span class="ac-cron-preview" id="cron-preview">ogni 5 minuti</span>
+              </div>
               <div class="ac-chain-area" id="ac-chain-area"></div>
-
-              <!-- Add call button -->
-              <button class="ac-add-call-btn" id="btn-add-call">
-                <i class="icon-plus"></i> Aggiungi chiamata
-              </button>
-
+              <button class="ac-add-call-btn" id="btn-add-call">+ Aggiungi chiamata</button>
               <div class="ac-divider"></div>
-
-              <!-- Paginazione e schedule (globali) -->
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:720px">
-                <div>
-                  <div class="control-group">
-                    <label class="control-label">Paginazione (ultima call)</label>
-                    <div class="controls">
-                      <select id="f-pagination" class="input-large">
-                        <option value="none">Nessuna</option>
-                        <option value="offset">Offset/Limit (page=N)</option>
-                        <option value="cursor">Cursor / next_token</option>
-                        <option value="link_header">Link header (RFC 5988)</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div id="pagination-details" style="display:none">
-                    <div class="control-group">
-                      <label class="control-label">Param pagina</label>
-                      <div class="controls" style="display:flex;gap:8px">
-                        <input type="text" id="f-page-param" class="input-medium" placeholder="page"/>
-                        <input type="text" id="f-cursor-path" class="input-medium" placeholder="$.next_cursor"/>
-                      </div>
-                    </div>
-                    <div class="control-group">
-                      <label class="control-label">Max pagine</label>
-                      <div class="controls"><input type="number" id="f-max-pages" class="input-mini" value="100"/></div>
-                    </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:640px">
+                <div class="control-group">
+                  <label class="control-label">Paginazione</label>
+                  <div class="controls">
+                    <select id="f-pagination" class="input-large">
+                      <option value="none">Nessuna</option>
+                      <option value="offset">Offset/Limit</option>
+                      <option value="cursor">Cursor/next_token</option>
+                      <option value="link_header">Link header (RFC 5988)</option>
+                    </select>
                   </div>
                 </div>
-                <div>
+                <div id="pagination-details" style="display:none">
                   <div class="control-group">
-                    <label class="control-label">Schedule (cron) <span class="ac-required">*</span></label>
-                    <div class="controls ac-cron-row">
-                      <input type="text" id="f-schedule" class="input-medium" placeholder="*/5 * * * *"/>
-                      <span class="ac-cron-preview" id="cron-preview">ogni 5 minuti</span>
+                    <label class="control-label">Param pagina / JSONPath cursore</label>
+                    <div class="controls" style="display:flex;gap:6px">
+                      <input type="text" id="f-page-param" class="input-medium" placeholder="page"/>
+                      <input type="text" id="f-cursor-path" class="input-medium" placeholder="$.next_cursor"/>
                     </div>
+                  </div>
+                  <div class="control-group">
+                    <label class="control-label">Max pagine</label>
+                    <div class="controls"><input type="number" id="f-max-pages" class="input-mini" value="100"/></div>
                   </div>
                 </div>
               </div>
@@ -137,12 +128,12 @@
           <div class="ac-step-panel" id="step-3">
             <div class="ac-panel-header">
               <h3 class="ac-panel-title">Step 3 — Parsing risposta</h3>
-              <p class="ac-panel-desc">Il tree è popolato dalla risposta delle call testate nello Step 2. Clicca sui campi per aggiungerli, oppure inseriscili manualmente.</p>
+              <p class="ac-panel-desc">Tree popolato dalle risposte del Chain Builder. Clicca i campi per selezionarli.</p>
             </div>
             <div class="ac-form-body ac-parsing-layout">
               <div>
-                <div class="ac-panel-section-title">Risposta (tree)</div>
-                <div class="ac-json-tree ac-json-tree--selectable" id="parsing-tree" style="max-height:400px;overflow-y:auto;background:#f8f9fb;border:1px solid var(--border-color,#d6dde4);border-radius:4px;padding:10px;font-family:monospace;font-size:12px;line-height:1.6">
+                <div class="ac-panel-section-title">Risposta (tree interattivo)</div>
+                <div class="ac-json-tree ac-json-tree--selectable" id="parsing-tree" style="max-height:420px;overflow-y:auto;background:#f8f9fb;border:1px solid var(--border-color,#d6dde4);border-radius:4px;padding:10px;font-family:monospace;font-size:12px;line-height:1.6">
                   <p class="ac-hint">Esegui almeno una call nello Step 2 per visualizzare il tree.</p>
                 </div>
               </div>
@@ -151,6 +142,7 @@
                 <div class="control-group">
                   <div class="controls">
                     <input type="text" id="f-array-root" class="input-xlarge" placeholder="$.data[*] — lascia vuoto se già array"/>
+                    <span class="help-block">JSONPath all'array principale di record.</span>
                   </div>
                 </div>
                 <div class="ac-panel-section-title" style="margin-top:14px">Campi estratti</div>
@@ -158,98 +150,209 @@
                 <button class="btn btn-default ac-btn-sm" id="btn-add-field"><i class="icon-plus"></i> Campo manuale</button>
                 <div class="ac-divider"></div>
                 <div class="ac-panel-section-title">Formato risposta</div>
-                <div class="control-group">
-                  <div class="controls">
-                    <select id="f-response-format" class="input-large">
-                      <option value="json">JSON</option>
-                      <option value="json_array">JSON array</option>
-                      <option value="csv">CSV (con header)</option>
-                      <option value="tsv">TSV</option>
-                      <option value="xml">XML</option>
-                      <option value="text">Testo libero (regex)</option>
-                    </select>
+                <select id="f-response-format" class="input-large">
+                  <option value="json">JSON</option>
+                  <option value="json_array">JSON array</option>
+                  <option value="csv">CSV (con header)</option>
+                  <option value="tsv">TSV</option>
+                  <option value="xml">XML</option>
+                  <option value="html">HTML (table extract)</option>
+                  <option value="text">Testo libero (regex)</option>
+                </select>
+                <div id="text-regex-group" style="display:none;margin-top:10px">
+                  <div class="control-group">
+                    <label class="control-label">Pattern regex (named groups)</label>
+                    <div class="controls">
+                      <input type="text" id="f-text-regex" class="input-xlarge" placeholder="(?P&lt;ip&gt;\d+\.\d+\.\d+\.\d+).*(?P&lt;user&gt;\w+)"/>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- STEP 4: TRACCIATO -->
+          <!-- STEP 4: TRASFORMAZIONI -->
           <div class="ac-step-panel" id="step-4">
             <div class="ac-panel-header">
-              <h3 class="ac-panel-title">Step 4 — Mapping tracciato standard</h3>
-              <p class="ac-panel-desc">Associa i campi estratti al tracciato aziendale. I campi con * sono obbligatori.</p>
+              <h3 class="ac-panel-title">Step 4 — Pipeline di trasformazioni</h3>
+              <p class="ac-panel-desc">Per ogni campo estratto puoi applicare una sequenza di trasformazioni in cascata: conversione date, normalizzazione stringhe, lookup, hash PII, calcoli numerici e altro.</p>
+            </div>
+            <div class="ac-form-body" style="max-width:100%">
+              <div id="ac-transforms-area">
+                <p class="ac-hint">I campi estratti nello Step 3 appariranno qui.</p>
+              </div>
+              <div class="ac-divider"></div>
+              <div style="background:var(--table-head-bg,#f5f7f9);border:1px solid var(--border-color,#d6dde4);border-radius:4px;padding:12px">
+                <div class="ac-panel-section-title">Trasformazioni disponibili</div>
+                <div id="ac-transforms-legend" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP 5: TRACCIATO -->
+          <div class="ac-step-panel" id="step-5">
+            <div class="ac-panel-header">
+              <h3 class="ac-panel-title">Step 5 — Mapping tracciato standard</h3>
+              <p class="ac-panel-desc">Associa i campi (già trasformati) al tracciato aziendale. * = obbligatorio.</p>
             </div>
             <div class="ac-form-body">
               <div class="ac-tracciato-grid" id="ac-tracciato-grid"></div>
             </div>
           </div>
 
-          <!-- STEP 5: OUTPUT -->
-          <div class="ac-step-panel" id="step-5">
+          <!-- STEP 6: OUTPUT FORMAT -->
+          <div class="ac-step-panel" id="step-6">
             <div class="ac-panel-header">
-              <h3 class="ac-panel-title">Step 5 — Destinazione output</h3>
-              <p class="ac-panel-desc">Index, sourcetype e source dove inviare gli eventi.</p>
+              <h3 class="ac-panel-title">Step 6 — Formato output &amp; Destinazione</h3>
+              <p class="ac-panel-desc">Configura come viene scritto l'evento e dove viene inviato.</p>
             </div>
             <div class="ac-form-body">
-              <div class="control-group">
-                <label class="control-label">Index <span class="ac-required">*</span></label>
-                <div class="controls"><select id="f-index" class="input-xlarge"><option value="">— Caricamento… —</option></select></div>
-              </div>
-              <div class="control-group">
-                <label class="control-label">Sourcetype <span class="ac-required">*</span></label>
-                <div class="controls"><input type="text" id="f-sourcetype" class="input-xlarge" placeholder="api_connect:nome_input"/></div>
-              </div>
-              <div class="control-group">
-                <label class="control-label">Source <span class="ac-required">*</span></label>
-                <div class="controls"><input type="text" id="f-source" class="input-xlarge" placeholder="https://api.example.com/v1/endpoint"/></div>
-              </div>
-              <div class="control-group">
-                <label class="control-label">Host</label>
-                <div class="controls"><input type="text" id="f-host" class="input-xlarge" placeholder="Lascia vuoto per hostname HF"/></div>
-              </div>
-              <div class="ac-divider"></div>
-              <div class="control-group">
-                <label class="control-label">Checkpoint dedup</label>
-                <div class="controls">
-                  <label class="checkbox"><input type="checkbox" id="f-checkpoint"/> Abilita checkpoint su campo timestamp/ID</label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:760px">
+                <div>
+                  <div class="ac-panel-section-title">Formato evento</div>
+                  <div class="control-group">
+                    <label class="control-label">Formato <span class="ac-required">*</span></label>
+                    <div class="controls">
+                      <select id="f-output-format" class="input-large">
+                        <option value="pipe">Pipe-separated  time|hostname|nomeapp|…</option>
+                        <option value="kv" selected>Key-Value  time="…" hostname="…"</option>
+                        <option value="json">JSON  {"time":"…","hostname":"…"}</option>
+                        <option value="csv">CSV  time,hostname,nomeapp,…</option>
+                        <option value="custom">Separatore custom</option>
+                      </select>
+                      <span class="help-block" id="output-format-hint">Formato KV — compatibile con Splunk field extraction automatica.</span>
+                    </div>
+                  </div>
+                  <div id="custom-sep-group" style="display:none">
+                    <div class="control-group">
+                      <label class="control-label">Separatore</label>
+                      <div class="controls"><input type="text" id="f-custom-sep" class="input-mini" value="|"/></div>
+                    </div>
+                  </div>
+                  <div class="control-group">
+                    <label class="control-label">Valore per campi vuoti/null</label>
+                    <div class="controls"><input type="text" id="f-null-value" class="input-medium" placeholder='lascia vuoto o es. N/A'/></div>
+                  </div>
+                  <div class="control-group">
+                    <label class="control-label">
+                      <label class="checkbox"><input type="checkbox" id="f-include-extra"/> Includi campi extra (non nel tracciato)</label>
+                    </label>
+                  </div>
                 </div>
-              </div>
-              <div id="checkpoint-detail" style="display:none">
-                <div class="control-group">
-                  <label class="control-label">Campo checkpoint</label>
-                  <div class="controls"><input type="text" id="f-checkpoint-field" class="input-large" placeholder="updated_at o id"/></div>
+                <div>
+                  <div class="ac-panel-section-title">Destinazione</div>
+                  <div class="control-group">
+                    <label class="control-label">Index <span class="ac-required">*</span></label>
+                    <div class="controls"><select id="f-index" class="input-xlarge"><option value="">— Caricamento… —</option></select></div>
+                  </div>
+                  <div class="control-group">
+                    <label class="control-label">Sourcetype <span class="ac-required">*</span></label>
+                    <div class="controls"><input type="text" id="f-sourcetype" class="input-xlarge" placeholder="api_connect:nome_input"/></div>
+                  </div>
+                  <div class="control-group">
+                    <label class="control-label">Source <span class="ac-required">*</span></label>
+                    <div class="controls"><input type="text" id="f-source" class="input-xlarge" placeholder="https://api.example.com/v1/endpoint"/></div>
+                  </div>
+                  <div class="control-group">
+                    <label class="control-label">Host</label>
+                    <div class="controls"><input type="text" id="f-host" class="input-xlarge" placeholder="Lascia vuoto per hostname HF"/></div>
+                  </div>
+                  <div class="control-group">
+                    <label class="control-label">Checkpoint dedup</label>
+                    <div class="controls">
+                      <label class="checkbox"><input type="checkbox" id="f-checkpoint"/> Abilita su campo timestamp/ID</label>
+                    </div>
+                  </div>
+                  <div id="checkpoint-detail" style="display:none">
+                    <div class="control-group">
+                      <label class="control-label">Campo checkpoint</label>
+                      <div class="controls"><input type="text" id="f-checkpoint-field" class="input-large" placeholder="updated_at o id"/></div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- STEP 6: LOGGER -->
-          <div class="ac-step-panel" id="step-6">
+          <!-- STEP 7: RESILIENZA -->
+          <div class="ac-step-panel" id="step-7">
             <div class="ac-panel-header">
-              <h3 class="ac-panel-title">Step 6 — Logger di esecuzione</h3>
-              <p class="ac-panel-desc">Log scritti su <code>index=_internal sourcetype=custom_script_logger</code>.</p>
+              <h3 class="ac-panel-title">Step 7 — Resilienza</h3>
+              <p class="ac-panel-desc">Configura il circuit breaker. Interrompe automaticamente l'esecuzione dopo N errori consecutivi, proteggendo l'API esterna e Splunk.</p>
             </div>
-            <div class="ac-form-body">
+            <div class="ac-form-body" style="max-width:520px">
+              <div class="control-group">
+                <label class="control-label">Circuit breaker</label>
+                <div class="controls">
+                  <label class="checkbox"><input type="checkbox" id="f-cb-enabled" checked/> Abilita circuit breaker</label>
+                </div>
+              </div>
+              <div id="cb-detail">
+                <div class="control-group">
+                  <label class="control-label">Soglia fallimenti consecutivi</label>
+                  <div class="controls">
+                    <input type="number" id="f-cb-threshold" class="input-mini" value="5" min="1" max="100"/>
+                    <span class="help-inline">errori prima di aprire il circuit</span>
+                  </div>
+                </div>
+                <div class="control-group">
+                  <label class="control-label">Cooldown (secondi)</label>
+                  <div class="controls">
+                    <input type="number" id="f-cb-cooldown" class="input-small" value="120" min="10"/>
+                    <span class="help-inline">pausa prima di riprovare (HALF_OPEN)</span>
+                  </div>
+                </div>
+                <div class="ac-info-banner" style="margin-top:12px">
+                  <i class="icon-info-circle"></i>
+                  Stato circuit breaker visibile nella dashboard e ricercabile con:<br/>
+                  <code>index=_internal sourcetype=custom_script_logger source=<em>logger_source</em> circuit</code>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STEP 8: LOGGER -->
+          <div class="ac-step-panel" id="step-8">
+            <div class="ac-panel-header">
+              <h3 class="ac-panel-title">Step 8 — Logger di esecuzione</h3>
+              <p class="ac-panel-desc">Log scritti su <code>index=_internal sourcetype=custom_script_logger</code>. Includono: status, records, elapsed_ms, eventuali errori e stato circuit breaker.</p>
+            </div>
+            <div class="ac-form-body" style="max-width:520px">
               <div class="control-group">
                 <label class="control-label">Source del logger <span class="ac-required">*</span></label>
                 <div class="controls">
                   <input type="text" id="f-logger-source" class="input-xlarge" placeholder="api_connect:nome_input:runner"/>
-                  <span class="help-block">Cerca con: <code>index=_internal sourcetype=custom_script_logger source=&lt;valore&gt;</code></span>
+                  <span class="help-block">SPL: <code>index=_internal sourcetype=custom_script_logger source=&lt;valore&gt;</code></span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- STEP 7: RIEPILOGO -->
-          <div class="ac-step-panel" id="step-7">
+          <!-- STEP 9: PREVIEW & GENERA -->
+          <div class="ac-step-panel" id="step-9">
             <div class="ac-panel-header">
-              <h3 class="ac-panel-title">Step 7 — Riepilogo e generazione</h3>
-              <p class="ac-panel-desc">Verifica la configurazione e genera lo script Modular Input.</p>
+              <h3 class="ac-panel-title">Step 9 — Preview evento &amp; Generazione</h3>
+              <p class="ac-panel-desc">Visualizza l'evento finale esatto prima di generare lo script. Il preview usa la risposta reale della test call dello Step 2.</p>
             </div>
             <div class="ac-form-body">
-              <div class="ac-summary-box">
-                <div class="ac-summary-title"><i class="icon-info-circle"></i> Configurazione</div>
+              <!-- Preview evento -->
+              <div class="ac-panel-section-title">Preview evento finale</div>
+              <div style="margin-bottom:14px">
+                <button class="btn btn-default ac-btn-sm" id="btn-refresh-preview">↻ Aggiorna preview</button>
+                <span style="font-size:12px;color:var(--text-muted-color,#8b959e);margin-left:8px" id="preview-note">Usa la risposta dalla test call dello Step 2</span>
+              </div>
+              <div id="ac-event-preview-wrap">
+                <div class="ac-panel-section-title" style="margin-bottom:6px">Record mappato &amp; trasformato</div>
+                <pre class="ac-code-block" id="ac-mapped-preview" style="max-height:200px">—</pre>
+                <div class="ac-panel-section-title" style="margin-top:14px;margin-bottom:6px">Stringa evento finale</div>
+                <pre class="ac-code-block" id="ac-event-string-preview" style="font-size:13px;background:#f0f7ff;border-color:#90caf9;max-height:80px">—</pre>
+              </div>
+
+              <div class="ac-divider"></div>
+
+              <!-- Riepilogo -->
+              <div class="ac-panel-section-title">Riepilogo configurazione</div>
+              <div class="ac-summary-box" style="margin-top:8px">
                 <div id="ac-summary-content"></div>
               </div>
             </div>
@@ -258,7 +361,7 @@
           <!-- Wizard nav -->
           <div class="ac-wizard-nav">
             <button class="btn btn-default" id="btn-prev" disabled><i class="icon-chevron-left"></i> Precedente</button>
-            <div class="ac-wizard-nav-center"><span class="ac-step-indicator" id="step-indicator">Step 1 di 7</span></div>
+            <div class="ac-wizard-nav-center"><span class="ac-step-indicator" id="step-indicator">Step 1 di 9</span></div>
             <div class="ac-wizard-nav-right">
               <button class="btn btn-default ac-btn-sm" id="btn-save-draft"><i class="icon-floppy-disk"></i> Bozza</button>
               <button class="btn btn-primary" id="btn-next">Successivo <i class="icon-chevron-right"></i></button>

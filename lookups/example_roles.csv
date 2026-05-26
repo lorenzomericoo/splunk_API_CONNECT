@@ -1,0 +1,5 @@
+code,label,category
+1,Administrator,admin
+2,Power User,user
+3,User,user
+4,Read Only,user

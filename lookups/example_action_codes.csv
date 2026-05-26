@@ -1,0 +1,7 @@
+code,label,severity
+LOGIN,Accesso effettuato,low
+LOGOUT,Disconnessione,low
+FAILED_LOGIN,Accesso fallito,high
+PASSWORD_CHANGE,Cambio password,medium
+PRIVILEGE_ESCALATION,Escalation privilegi,critical
+DATA_EXPORT,Esportazione dati,high
